@@ -97,6 +97,35 @@ describe("leaguePage", () => {
     expect(week.you?.chart).toHaveLength(8);
     expect(week.you?.chart[0].value).toBe(0);
     expect(week.you?.chart.at(-1)?.value).toBeCloseTo(1.001 ** 7 - 1, 10);
+    expect(week.you?.rangeValue).toBe(week.you?.chart.at(-1)?.value);
+    expect(week.rows.map((r) => r.userId)).toEqual(["b", "a"]);
+  });
+
+  it("keeps a paused member flat and last in a window view", () => {
+    const week = leaguePage(
+      league([
+        player("a", 0.001),
+        player("b", 0.005, { pausedSince: "2026-10-20" }),
+      ]),
+      "a",
+      TODAY,
+      "week",
+    );
+    const b = week.rows.at(-1)!;
+    expect(b.userId).toBe("b");
+    expect(b.chart).toEqual([{ date: "2026-11-04", value: 0, partial: false }]);
+    expect(b.rangeValue).toBeNull();
+  });
+
+  it("falls back to the quarter view while the quarter is shorter than the window", () => {
+    const early = leaguePage(
+      league([player("a", 0.001)]),
+      "a",
+      "2026-10-05",
+      "month",
+    );
+    expect(early.range).toBe("quarter");
+    expect(early.you?.chart).toHaveLength(6);
   });
 
   it("works for a viewer who is alone in a new league", () => {

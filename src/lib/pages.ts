@@ -64,6 +64,8 @@ export type LeaguePageRow = LeagueRow & {
   note: string | null;
   /** The line to draw for the chosen range. */
   chart: Point[];
+  /** The return over the chosen range. Equal to the score in the quarter view. */
+  rangeValue: number | null;
 };
 
 export type FeedItem = {
@@ -256,13 +258,32 @@ export function leaguePage(
   const players = new Map(league.members.map((m) => [m.userId, m]));
   const windowDays = RANGE_DAYS[range];
 
-  const rows = view.rows.map<LeaguePageRow>((row) => ({
-    ...row,
-    isYou: row.userId === viewerId,
-    shownName: shownName(row, viewerId),
-    note: rowNote(row, quarter),
-    chart: windowDays ? rebaseWindow(row.series, windowDays) : row.series,
-  }));
+  // A month or week view only applies once the quarter is longer than it.
+  const windowed = windowDays !== null && view.dayOfQuarter > windowDays;
+  const origin = windowed ? addDays(view.asOf, -(windowDays as number)) : "";
+  const rows = view.rows.map<LeaguePageRow>((row) => {
+    const chart = windowed ? rebaseWindow(row.series, origin) : row.series;
+    return {
+      ...row,
+      isYou: row.userId === viewerId,
+      shownName: shownName(row, viewerId),
+      note: rowNote(row, quarter),
+      chart,
+      rangeValue: !windowed
+        ? row.score.value
+        : row.paused || chart.length < 2
+          ? null
+          : chart[chart.length - 1].value,
+    };
+  });
+  // In a window view the list follows the window: best mover first.
+  if (windowed) {
+    rows.sort(
+      (a, b) =>
+        Number(a.rangeValue === null) - Number(b.rangeValue === null) ||
+        (b.rangeValue ?? 0) - (a.rangeValue ?? 0),
+    );
+  }
   const you = rows.find((r) => r.isYou) ?? null;
   const youPlayer = players.get(viewerId);
 
@@ -272,7 +293,9 @@ export function leaguePage(
       stats.push({ label: "This week", value: signedPercent(you.week.value) });
     }
     if (you.rank !== null && you.score.value !== null) {
-      const ranked = rows.filter((r) => r.rank !== null && !r.isYou);
+      const ranked = rows
+        .filter((r) => r.rank !== null && !r.isYou)
+        .sort((a, b) => (a.rank as number) - (b.rank as number));
       const ahead = ranked
         .filter((r) => (r.rank as number) < (you.rank as number))
         .at(-1);
@@ -361,7 +384,7 @@ export function leaguePage(
     },
     quarter,
     asOf: view.asOf,
-    range,
+    range: windowed ? range : "quarter",
     dayOfQuarter: view.dayOfQuarter,
     daysInQuarter: view.daysInQuarter,
     week: Math.min(13, Math.ceil(view.dayOfQuarter / 7)),

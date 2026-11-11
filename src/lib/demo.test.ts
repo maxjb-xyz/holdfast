@@ -92,14 +92,14 @@ describe("demo league", () => {
   });
 
   it("freezes a paused member and takes away their rank", () => {
-    const before = row("2026-11-09", "demo-ingrid");
+    const before = row("2026-11-05", "demo-ingrid");
     expect(before).toMatchObject({ paused: false });
     expect(before?.rank).not.toBeNull();
-    for (const day of ["2026-11-10", "2026-11-11", "2026-12-20"]) {
+    for (const day of ["2026-11-06", "2026-11-11", "2026-12-20"]) {
       const after = row(day, "demo-ingrid");
       expect(after).toMatchObject({ paused: true, rank: null, move: null });
       expect(after?.score.value).toBe(before?.score.value);
-      expect(after?.series.at(-1)?.date).toBe("2026-11-09");
+      expect(after?.series.at(-1)?.date).toBe("2026-11-05");
     }
   });
 
