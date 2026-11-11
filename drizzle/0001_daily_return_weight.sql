@@ -1,1 +1,0 @@
-ALTER TABLE `daily_returns` ADD `weight` real DEFAULT 1 NOT NULL;

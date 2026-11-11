@@ -51,7 +51,8 @@ export type LeagueView = {
   rows: LeagueRow[];
 };
 
-function standingsAsOf(
+/** The ranking as it stood at the end of a given day. */
+export function standingsAsOf(
   members: readonly LeagueMember[],
   quarter: Quarter,
   asOf: string,
@@ -106,7 +107,7 @@ export function buildLeagueView(input: {
       score: s.score,
       week: windowScore(member.rows, weekFrom, to),
       paused: s.paused,
-      joinedThisQuarter: member.joinedOn > quarter.start,
+      joinedThisQuarter: member.joinedOn >= quarter.start,
       series: from <= to ? cumulativeSeries(member.rows, from, to) : [],
     };
   });

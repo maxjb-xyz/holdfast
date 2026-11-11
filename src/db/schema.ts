@@ -17,9 +17,15 @@ export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
   displayName: text("display_name").notNull(),
   // Privacy: what league friends can see. Dollar amounts are never shared.
-  showReturn: integer("show_return", { mode: "boolean" }).notNull().default(true),
-  showBadges: integer("show_badges", { mode: "boolean" }).notNull().default(true),
-  showHoldings: integer("show_holdings", { mode: "boolean" }).notNull().default(false),
+  showReturn: integer("show_return", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  showBadges: integer("show_badges", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  showHoldings: integer("show_holdings", { mode: "boolean" })
+    .notNull()
+    .default(false),
   createdAt: createdAt(),
 });
 
@@ -30,7 +36,9 @@ export const oauthTokens = sqliteTable("oauth_tokens", {
     .references(() => users.id, { onDelete: "cascade" }),
   accessTokenEnc: text("access_token_enc").notNull(),
   refreshTokenEnc: text("refresh_token_enc").notNull(),
-  accessExpiresAt: integer("access_expires_at", { mode: "timestamp" }).notNull(),
+  accessExpiresAt: integer("access_expires_at", {
+    mode: "timestamp",
+  }).notNull(),
   // "active" or "needs_reconnect" (refresh failed; ranks show as paused).
   status: text("status").notNull().default("active"),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
@@ -73,7 +81,10 @@ export const dailyReturns = sqliteTable(
     partial: integer("partial", { mode: "boolean" }).notNull().default(false),
     // The account's share (0 to 1) of the user's total balance at the start
     // of the day. Lets several accounts be blended without storing dollars.
-    weight: real("weight").notNull().default(1),
+    // Null when the share could not be worked out that day.
+    weight: real("weight"),
+    // Net deposits that day as a fraction of the starting balance.
+    flowRate: real("flow_rate").notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.accountId, t.date] })],
 );
@@ -82,7 +93,9 @@ export const leagues = sqliteTable("leagues", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   inviteCode: text("invite_code").notNull().unique(),
-  ownerId: text("owner_id").references(() => users.id, { onDelete: "set null" }),
+  ownerId: text("owner_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
   isDemo: integer("is_demo", { mode: "boolean" }).notNull().default(false),
   createdAt: createdAt(),
 });

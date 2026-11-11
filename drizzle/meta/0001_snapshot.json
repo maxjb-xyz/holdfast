@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "557d36b8-39db-4117-9105-46d5f98c9b61",
+  "id": "0d92ed6b-4a36-46e2-b9cb-468eb08fa8cb",
   "prevId": "2c57b052-3700-476f-bae0-66e6a196ab6e",
   "tables": {
     "accounts": {
@@ -241,9 +241,16 @@
           "name": "weight",
           "type": "real",
           "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "flow_rate": {
+          "name": "flow_rate",
+          "type": "real",
+          "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 1
+          "default": 0
         }
       },
       "indexes": {},

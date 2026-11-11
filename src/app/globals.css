@@ -1,6 +1,98 @@
 @import "tailwindcss";
 
-@theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/Geist.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/GeistMono.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Serif";
+  src: url("/fonts/GeistSerif.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: "Geist", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, Menlo, monospace;
+  --font-serif: "Geist Serif", Georgia, serif;
+
+  /* One dark surface, greys for hierarchy, and a single blue kept for you. */
+  --color-bg: #08090a;
+  --color-raised: #131518;
+  --color-chip: #17191d;
+  --color-text: #ededeb;
+  --color-sub: #b9bcc2;
+  --color-dim: #8e929b;
+  --color-grey: #646973;
+  --color-rule: #2a2d33;
+  --color-faint: #1f2126;
+  --color-you: #6393ff;
+}
+
+html {
+  background: var(--color-bg);
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-you);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@layer components {
+  /* Small uppercase mono label used above sections. */
+  .label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-dim);
+  }
+  /* The large light numerals used for headline returns. */
+  .numeral {
+    font-weight: 400;
+    line-height: 0.95;
+    letter-spacing: -0.055em;
+    font-variant-numeric: tabular-nums;
+  }
+  .serif {
+    font-family: var(--font-serif);
+    font-weight: 350;
+    letter-spacing: -0.02em;
+  }
+  .hover-text {
+    transition: color 120ms ease;
+  }
+  .hover-text:hover {
+    color: #ffffff;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
 }

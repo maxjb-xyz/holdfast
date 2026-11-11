@@ -2,17 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   DEMO_RIVALS,
   DEMO_VIEWER,
+  DEMO_VIEWER_ID,
   demoDailyReturn,
-  demoLeagueMembers,
-  demoMember,
+  demoFacts,
+  demoLeague,
+  demoPlayer,
 } from "./demo";
 import { buildLeagueView } from "./league-view";
-import { addDays, quarterOf } from "./quarters";
+import { addDays, quarterOf, quartersEndingAt } from "./quarters";
 
-const q4 = quarterOf("2026-11-11");
 const view = (asOf: string) =>
   buildLeagueView({
-    members: demoLeagueMembers(quarterOf(asOf), asOf),
+    members: demoLeague(asOf).members,
     quarter: quarterOf(asOf),
     asOf,
   });
@@ -30,19 +31,40 @@ describe("demo rivals", () => {
     );
   });
 
-  it("is flat at weekends and stays within believable daily moves", () => {
+  it("is flat at weekends", () => {
     expect(demoDailyReturn(DEMO_RIVALS[0], "2026-11-07")).toBe(0);
-    for (const rival of [...DEMO_RIVALS, DEMO_VIEWER]) {
-      for (let d = q4.start; d <= q4.end; d = addDays(d, 1)) {
-        expect(Math.abs(demoDailyReturn(rival, d))).toBeLessThan(0.03);
-      }
+    expect(demoDailyReturn(DEMO_RIVALS[0], "2026-11-08")).toBe(0);
+  });
+
+  it("produces quarter returns a patient investor would believe", () => {
+    // Twelve years of quarters for every profile.
+    const quarters = quartersEndingAt(quarterOf("2032-12-31"), 48);
+    for (const profile of [...DEMO_RIVALS, DEMO_VIEWER]) {
+      const results = quarters.map((q) => {
+        let growth = 1;
+        for (let d = q.start; d <= q.end; d = addDays(d, 1)) {
+          growth *= 1 + demoDailyReturn(profile, d);
+        }
+        return growth - 1;
+      });
+      const mean = results.reduce((a, b) => a + b, 0) / results.length;
+      expect(mean).toBeGreaterThan(0.002);
+      expect(mean).toBeLessThan(0.045);
+      expect(Math.max(...results)).toBeLessThan(0.2);
+      expect(Math.min(...results)).toBeGreaterThan(-0.15);
     }
   });
 
-  it("never rewrites history as the quarter moves on", () => {
-    const early = demoMember(DEMO_RIVALS[0], q4, "2026-10-20").rows;
-    const later = demoMember(DEMO_RIVALS[0], q4, "2026-11-11").rows;
+  it("never rewrites history as time moves on", () => {
+    const early = demoPlayer(DEMO_RIVALS[0], "2026-10-20").rows;
+    const later = demoPlayer(DEMO_RIVALS[0], "2026-11-11").rows;
     expect(later.slice(0, early.length)).toEqual(early);
+    const recent = (asOf: string) =>
+      demoFacts(DEMO_VIEWER, asOf).buyDates.filter(
+        (d) => d >= "2025-01-01" && d <= "2026-11-11",
+      );
+    expect(recent("2026-11-11")).toEqual(recent("2026-12-30"));
+    expect(recent("2026-11-11").length).toBeGreaterThan(10);
   });
 });
 
@@ -55,6 +77,7 @@ describe("demo league", () => {
     const ranks = league.rows.map((r) => r.rank).filter((r) => r !== null);
     expect(ranks).toHaveLength(5);
     expect(ranks[0]).toBe(1);
+    expect(league.rows.some((r) => r.userId === DEMO_VIEWER_ID)).toBe(true);
   });
 
   it("hides the late joiner until they join, then scores them from 0%", () => {
@@ -69,20 +92,22 @@ describe("demo league", () => {
   });
 
   it("freezes a paused member and takes away their rank", () => {
-    const before = row("2026-10-29", "demo-ingrid");
+    const before = row("2026-11-09", "demo-ingrid");
     expect(before).toMatchObject({ paused: false });
     expect(before?.rank).not.toBeNull();
-    const after = row("2026-11-11", "demo-ingrid");
-    expect(after).toMatchObject({ paused: true, rank: null, move: null });
-    expect(after?.score.value).toBeCloseTo(before?.score.value as number);
-    expect(after?.series.at(-1)?.date).toBe("2026-10-29");
+    for (const day of ["2026-11-10", "2026-11-11", "2026-12-20"]) {
+      const after = row(day, "demo-ingrid");
+      expect(after).toMatchObject({ paused: true, rank: null, move: null });
+      expect(after?.score.value).toBe(before?.score.value);
+      expect(after?.series.at(-1)?.date).toBe("2026-11-09");
+    }
   });
 
   it("flags the member with incomplete data as partial but keeps them ranked", () => {
     const hana = row("2026-11-11", "demo-hana");
     expect(hana?.score.partial).toBe(true);
     expect(hana?.rank).not.toBeNull();
-    expect(row("2026-10-20", "demo-hana")?.score.partial).toBe(false);
+    expect(row("2026-10-15", "demo-hana")?.score.partial).toBe(false);
   });
 
   it("gives everyone else a complete score and a 7 day figure", () => {
@@ -92,27 +117,54 @@ describe("demo league", () => {
     expect(priya?.series).toHaveLength(43);
   });
 
+  it("keeps the quarter's events out of earlier quarters", () => {
+    const league = demoLeague("2026-11-11");
+    const q3 = quarterOf("2026-09-30");
+    const past = buildLeagueView({
+      members: league.members,
+      quarter: q3,
+      asOf: q3.end,
+    });
+    expect(past.rows.map((r) => r.userId)).not.toContain("demo-dele");
+    expect(past.rows).toHaveLength(5);
+    expect(past.rows.every((r) => r.rank !== null && !r.score.partial)).toBe(
+      true,
+    );
+  });
+
   it("uses a real viewer in place of the demo portfolio", () => {
-    const members = demoLeagueMembers(q4, "2026-11-11", {
+    const real = {
+      ...demoPlayer(DEMO_VIEWER, "2026-11-11"),
       userId: "real",
       name: "Maximus",
-      joinedOn: "2026-09-01",
-      rows: [],
-    });
-    expect(members.map((m) => m.userId)).not.toContain("demo-you");
+    };
+    const members = demoLeague("2026-11-11", real).members;
+    expect(members.map((m) => m.userId)).not.toContain(DEMO_VIEWER_ID);
     expect(members[0].userId).toBe("real");
   });
 
-  it("works on the first day of a quarter and after it ends", () => {
+  it("works on the first day of a quarter and on its last", () => {
     const first = view("2027-01-01");
     expect(first.dayOfQuarter).toBe(1);
     expect(first.rows.every((r) => r.move === null)).toBe(true);
-    const ended = buildLeagueView({
-      members: demoLeagueMembers(q4, "2027-02-01"),
-      quarter: q4,
-      asOf: "2027-02-01",
-    });
-    expect(ended.asOf).toBe("2026-12-31");
-    expect(ended.dayOfQuarter).toBe(92);
+    const lastDay = view("2026-12-31");
+    expect(lastDay.dayOfQuarter).toBe(92);
+    expect(lastDay.rows).toHaveLength(6);
+  });
+
+  it("awards badges only on days that have already happened", () => {
+    for (const today of [
+      "2026-10-01",
+      "2026-11-11",
+      "2026-12-31",
+      "2027-02-14",
+    ]) {
+      for (const member of demoLeague(today).members) {
+        for (const badge of member.earned) {
+          expect(badge.on <= today).toBe(true);
+          expect(badge.on.length).toBe(10);
+        }
+      }
+    }
   });
 });

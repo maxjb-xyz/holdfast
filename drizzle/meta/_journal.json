@@ -12,8 +12,8 @@
     {
       "idx": 1,
       "version": "6",
-      "when": 1794388411474,
-      "tag": "0001_daily_return_weight",
+      "when": 1794389356432,
+      "tag": "0001_scoring_columns",
       "breakpoints": true
     }
   ]

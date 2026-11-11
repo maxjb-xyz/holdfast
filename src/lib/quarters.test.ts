@@ -4,7 +4,8 @@ import {
   daysInclusive,
   previousQuarter,
   quarterOf,
-  scoringStart,
+  nextQuarter,
+  quartersEndingAt,
 } from "./quarters";
 
 describe("quarterOf", () => {
@@ -31,13 +32,11 @@ describe("previousQuarter", () => {
   });
 });
 
-describe("scoringStart", () => {
-  const q = quarterOf("2026-11-11");
-  it("uses the quarter start for members who joined earlier", () => {
-    expect(scoringStart(q, "2026-08-15")).toBe("2026-10-01");
-  });
-  it("uses the join date for late joiners", () => {
-    expect(scoringStart(q, "2026-11-03")).toBe("2026-11-03");
+describe("quarter lists", () => {
+  it("lists quarters oldest first across a year end", () => {
+    const list = quartersEndingAt(quarterOf("2027-02-10"), 3);
+    expect(list.map((q) => q.key)).toEqual(["2026-Q3", "2026-Q4", "2027-Q1"]);
+    expect(nextQuarter(quarterOf("2026-12-31")).key).toBe("2027-Q1");
   });
 });
 
