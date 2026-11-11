@@ -6,6 +6,7 @@ import {
   sqliteTable,
   text,
 } from "drizzle-orm/sqlite-core";
+import type { HabitFacts } from "@/lib/badges";
 
 const createdAt = () =>
   integer("created_at", { mode: "timestamp" })
@@ -26,6 +27,12 @@ export const users = sqliteTable("users", {
   showHoldings: integer("show_holdings", { mode: "boolean" })
     .notNull()
     .default(false),
+  // Set to the last day that synced when the SnapTrade link breaks. The
+  // member's score freezes there and their rank shows as paused.
+  pausedSince: text("paused_since"),
+  lastSyncedAt: integer("last_synced_at", { mode: "timestamp" }),
+  // When a sync last started, so two never run for one person at once.
+  syncClaimedAt: integer("sync_claimed_at", { mode: "timestamp" }),
   createdAt: createdAt(),
 });
 
@@ -39,12 +46,23 @@ export const oauthTokens = sqliteTable("oauth_tokens", {
   accessExpiresAt: integer("access_expires_at", {
     mode: "timestamp",
   }).notNull(),
-  // "active" or "needs_reconnect" (refresh failed; ranks show as paused).
+  scope: text("scope").notNull().default(""),
+  // "active", "refreshing" (a refresh is in flight) or "needs_reconnect"
+  // (the person has to sign in again; their rank shows as paused).
   status: text("status").notNull().default("active"),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
 
-/** Browser sessions. The cookie holds only the random session id. */
+/** One sign-in attempt in flight: the state, PKCE verifier and nonce. */
+export const oauthStates = sqliteTable("oauth_states", {
+  state: text("state").primaryKey(),
+  codeVerifier: text("code_verifier").notNull(),
+  nonce: text("nonce").notNull(),
+  returnTo: text("return_to"),
+  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+});
+
+/** Browser sessions. Only a hash of the cookie's token is stored. */
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(),
   userId: text("user_id")
@@ -59,11 +77,31 @@ export const accounts = sqliteTable("accounts", {
   userId: text("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
-  label: text("label").notNull(), // e.g. institution name, shown only to the owner
-  // Last synced balance, kept only to chain the next day's return.
-  lastBalance: real("last_balance"),
+  label: text("label").notNull(), // shown only to the owner
+  // Whether this account counts toward league scores. The owner chooses.
+  counted: integer("counted", { mode: "boolean" }).notNull().default(true),
+  // False when the brokerage connection behind the account is disabled.
+  connected: integer("connected", { mode: "boolean" }).notNull().default(true),
   lastSyncedOn: text("last_synced_on"), // YYYY-MM-DD
 });
+
+/**
+ * A short rolling window of account balances, the only dollar amounts kept.
+ * Scoring needs yesterday's balance to work out today's return, and a few
+ * extra days let a deposit that the brokerage reports late be corrected.
+ * Rows older than the window are deleted on every sync.
+ */
+export const balanceSnapshots = sqliteTable(
+  "balance_snapshots",
+  {
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    date: text("date").notNull(), // YYYY-MM-DD
+    balance: real("balance").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.accountId, t.date] })],
+);
 
 /**
  * One row per account per day. dailyReturn is the day's return with deposits
@@ -89,6 +127,43 @@ export const dailyReturns = sqliteTable(
   (t) => [primaryKey({ columns: [t.accountId, t.date] })],
 );
 
+/**
+ * A person's habit facts as of their last sync: months with a buy, dividend
+ * dates, holdings as shares of the portfolio, and how long the oldest holding
+ * has been held. Tickers, dates and percentages only.
+ */
+export const userFacts = sqliteTable("user_facts", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  facts: text("facts", { mode: "json" }).$type<HabitFacts>().notNull(),
+  // Prices at the start of the quarter, to show each holding's change.
+  quarter: text("quarter").notNull(),
+  startPrices: text("start_prices", { mode: "json" })
+    .$type<Record<string, number>>()
+    .notNull(),
+  // The day each current holding was first seen, for the One Year Hold badge
+  // when the brokerage's history does not reach back to the purchase.
+  firstSeen: text("first_seen", { mode: "json" })
+    .$type<Record<string, string>>()
+    .notNull()
+    .default({}),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+/** Habit facts frozen at the end of each quarter, for that quarter's Wrapped. */
+export const quarterSnapshots = sqliteTable(
+  "quarter_snapshots",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    quarter: text("quarter").notNull(), // e.g. "2026-Q4"
+    facts: text("facts", { mode: "json" }).$type<HabitFacts>().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.quarter] })],
+);
+
 export const leagues = sqliteTable("leagues", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -96,8 +171,7 @@ export const leagues = sqliteTable("leagues", {
   ownerId: text("owner_id").references(() => users.id, {
     onDelete: "set null",
   }),
-  isDemo: integer("is_demo", { mode: "boolean" }).notNull().default(false),
-  createdAt: createdAt(),
+  createdOn: text("created_on").notNull(), // YYYY-MM-DD
 });
 
 export const leagueMembers = sqliteTable(
@@ -114,23 +188,6 @@ export const leagueMembers = sqliteTable(
   (t) => [primaryKey({ columns: [t.leagueId, t.userId] })],
 );
 
-/** Which of a member's accounts count in a given league. */
-export const leagueMemberAccounts = sqliteTable(
-  "league_member_accounts",
-  {
-    leagueId: text("league_id")
-      .notNull()
-      .references(() => leagues.id, { onDelete: "cascade" }),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    accountId: text("account_id")
-      .notNull()
-      .references(() => accounts.id, { onDelete: "cascade" }),
-  },
-  (t) => [primaryKey({ columns: [t.leagueId, t.userId, t.accountId] })],
-);
-
 export const badges = sqliteTable(
   "badges",
   {
@@ -139,37 +196,7 @@ export const badges = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     badgeKey: text("badge_key").notNull(), // e.g. "one_year_hold"
     quarter: text("quarter").notNull(), // e.g. "2026-Q4"
-    earnedAt: createdAt(),
+    earnedOn: text("earned_on").notNull(), // YYYY-MM-DD
   },
   (t) => [primaryKey({ columns: [t.userId, t.badgeKey, t.quarter] })],
 );
-
-/** Final standings saved when a quarter closes. */
-export const quarterResults = sqliteTable(
-  "quarter_results",
-  {
-    leagueId: text("league_id")
-      .notNull()
-      .references(() => leagues.id, { onDelete: "cascade" }),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    quarter: text("quarter").notNull(),
-    rank: integer("rank").notNull(),
-    returnPct: real("return_pct").notNull(),
-    partial: integer("partial", { mode: "boolean" }).notNull().default(false),
-  },
-  (t) => [primaryKey({ columns: [t.leagueId, t.userId, t.quarter] })],
-);
-
-/** League activity feed: badges earned, rank changes, Wrapped ready. */
-export const activity = sqliteTable("activity", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  leagueId: text("league_id")
-    .notNull()
-    .references(() => leagues.id, { onDelete: "cascade" }),
-  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
-  kind: text("kind").notNull(), // "badge" | "rank_change" | "wrapped_ready"
-  payload: text("payload", { mode: "json" }),
-  createdAt: createdAt(),
-});

@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "holdfast",
-  "main": ".open-next/worker.js",
+  "main": "worker.ts",
   "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
@@ -21,5 +21,9 @@
       "migrations_dir": "drizzle"
     }
   ],
+  "triggers": {
+    // Nightly sync, after US markets have closed and before the UTC day ends.
+    "crons": ["30 23 * * *"]
+  },
   "observability": { "enabled": true }
 }

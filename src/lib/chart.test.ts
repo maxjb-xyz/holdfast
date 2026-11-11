@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  domainTicks,
   linePath,
   niceTicks,
   paddedDomain,
   partialStretch,
   rebaseWindow,
+  smoothPath,
   splitByPartial,
   type Point,
 } from "./chart";
@@ -82,14 +84,54 @@ describe("series helpers", () => {
   });
 
   it("rebases a window to start at zero", () => {
-    const window = rebaseWindow(pts([0, 0.1, 0.21, 0.331]), 2);
-    expect(window).toHaveLength(3);
+    const window = rebaseWindow(pts([0, 0.1, 0.21, 0.331]), "2026-10-02");
+    expect(window.map((p) => p.date)).toEqual([
+      "2026-10-02",
+      "2026-10-03",
+      "2026-10-04",
+    ]);
     expect(window[0].value).toBe(0);
-    expect(window[1].value).toBeCloseTo(0.1);
-    expect(window[2].value).toBeCloseTo(0.21);
+    expect(window[1].value).toBeCloseTo(0.1, 10);
+    expect(window[2].value).toBeCloseTo(0.21, 10);
   });
 
-  it("leaves a short series alone", () => {
-    expect(rebaseWindow(pts([0, 0.1]), 7)).toEqual(pts([0, 0.1]));
+  it("leaves a series that starts inside the window alone", () => {
+    expect(rebaseWindow(pts([0, 0.1]), "2026-09-20")).toEqual(pts([0, 0.1]));
+  });
+
+  it("turns a series that ended before the window into one flat point", () => {
+    expect(rebaseWindow(pts([0, 0.1]), "2026-10-20")).toEqual([
+      { date: "2026-10-20", value: 0, partial: false },
+    ]);
+  });
+
+  it("keeps short runs straight and curves long ones through every point", () => {
+    const few: [number, number][] = [
+      [0, 0],
+      [5, 5],
+      [10, 0],
+    ];
+    expect(smoothPath(few)).toBe(linePath(few));
+    const many = Array.from(
+      { length: 20 },
+      (_, i) => [i * 10, (i % 3) * 4] as [number, number],
+    );
+    const d = smoothPath(many);
+    expect(d.startsWith("M0.0 0.0 C")).toBe(true);
+    for (const [x, y] of many.slice(1))
+      expect(d).toContain(` ${x.toFixed(1)} ${y.toFixed(1)}`);
+  });
+});
+
+describe("domainTicks", () => {
+  it("spreads gridlines over the widened range when returns are tiny", () => {
+    const ticks = domainTicks([0, 0.0032], 0.03, 3);
+    expect(ticks).toContain(0);
+    expect(ticks.length).toBeGreaterThanOrEqual(3);
+    expect(Math.min(...ticks)).toBeLessThan(0);
+    expect(Math.max(...ticks)).toBeGreaterThan(0.0032);
+  });
+  it("matches the plain ticks once returns span more than the minimum", () => {
+    expect(domainTicks([-0.02, 0.06])).toEqual(niceTicks(-0.02, 0.06));
   });
 });

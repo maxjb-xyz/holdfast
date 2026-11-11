@@ -119,7 +119,7 @@ export const DEMO_RIVALS: readonly DemoProfile[] = [
       { ticker: "VXUS", share: 0.28, pays: [0, 20] },
       { ticker: "BND", share: 0.2, pays: [1, 5] },
     ],
-    pausesOnDay: 40,
+    pausesOnDay: 36,
   },
   {
     id: "demo-dele",
