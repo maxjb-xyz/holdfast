@@ -42,3 +42,15 @@ export function previousQuarter(q: Quarter): Quarter {
 export function scoringStart(q: Quarter, joinedOn: string): string {
   return joinedOn > q.start ? joinedOn : q.start;
 }
+
+export function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return toDateString(d);
+}
+
+/** Number of days from `from` to `to`, inclusive of both. Zero if `to` is earlier. */
+export function daysInclusive(from: string, to: string): number {
+  const ms = Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`);
+  return Math.max(0, Math.round(ms / 86_400_000) + 1);
+}

@@ -71,6 +71,9 @@ export const dailyReturns = sqliteTable(
     dailyReturn: real("daily_return").notNull(),
     // True when the brokerage gave incomplete data for this day.
     partial: integer("partial", { mode: "boolean" }).notNull().default(false),
+    // The account's share (0 to 1) of the user's total balance at the start
+    // of the day. Lets several accounts be blended without storing dollars.
+    weight: real("weight").notNull().default(1),
   },
   (t) => [primaryKey({ columns: [t.accountId, t.date] })],
 );
