@@ -35,10 +35,25 @@ export function previousQuarter(q: Quarter): Quarter {
   return quarterOf(toDateString(dayBefore));
 }
 
-/**
- * The first day a member is scored from in a quarter: the quarter start,
- * or the day they joined if that is later.
- */
-export function scoringStart(q: Quarter, joinedOn: string): string {
-  return joinedOn > q.start ? joinedOn : q.start;
+export function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return toDateString(d);
+}
+
+/** Number of days from `from` to `to`, inclusive of both. Zero if `to` is earlier. */
+export function daysInclusive(from: string, to: string): number {
+  const ms = Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`);
+  return Math.max(0, Math.round(ms / 86_400_000) + 1);
+}
+
+/** The quarter before `q`, `n` times over, oldest first, ending with `q`. */
+export function quartersEndingAt(q: Quarter, count: number): Quarter[] {
+  const list = [q];
+  while (list.length < count) list.unshift(previousQuarter(list[0]));
+  return list;
+}
+
+export function nextQuarter(q: Quarter): Quarter {
+  return quarterOf(addDays(q.end, 1));
 }
