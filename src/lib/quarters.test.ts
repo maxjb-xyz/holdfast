@@ -1,5 +1,11 @@
-import { addDays, daysInclusive, describe, expect, it } from "vitest";
-import { previousQuarter, quarterOf, scoringStart } from "./quarters";
+import { describe, expect, it } from "vitest";
+import {
+  addDays,
+  daysInclusive,
+  previousQuarter,
+  quarterOf,
+  scoringStart,
+} from "./quarters";
 
 describe("quarterOf", () => {
   it("maps dates to calendar quarters", () => {
