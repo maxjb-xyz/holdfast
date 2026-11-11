@@ -8,12 +8,12 @@ import { wrapped } from "@/lib/pages";
 import { addDays, quarterOf, quartersEndingAt } from "@/lib/quarters";
 import { loadLeague } from "@/server/leagues";
 import { syncStatus } from "@/server/status";
-import { getViewer, today } from "@/server/viewer";
+import { requireViewer, today } from "@/server/viewer";
 
 export const metadata: Metadata = { title: "Wrapped" };
 
 export default async function WrappedIndex() {
-  const viewer = (await getViewer())!;
+  const viewer = await requireViewer();
   const league = await loadLeague(viewer);
   if (!league) notFound();
   const day = today();

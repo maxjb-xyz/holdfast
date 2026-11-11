@@ -1,5 +1,5 @@
 import {
-  niceTicks,
+  domainTicks,
   paddedDomain,
   smoothPath,
   splitByPartial,
@@ -152,7 +152,7 @@ export function LeagueChart({
   const domain = paddedDomain(values);
   const y = (v: number) =>
     PT + ((H - PT - PB) * (domain.top - v)) / (domain.top - domain.bottom);
-  const ticks = niceTicks(Math.min(0, ...values), Math.max(0, ...values));
+  const ticks = domainTicks(values);
   const axisY = H - PB + 6;
 
   // Tick marks along the bottom: weeks in the quarter view, days in the week view.

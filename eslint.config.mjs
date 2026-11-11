@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     ".wrangler/**",
     "cloudflare-env.d.ts",
     "next-env.d.ts",
+    // Imports the build output, which only exists after a build.
+    "worker.ts",
   ]),
 ]);
 

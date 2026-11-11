@@ -94,6 +94,7 @@ CREATE TABLE `user_facts` (
 	`facts` text NOT NULL,
 	`quarter` text NOT NULL,
 	`start_prices` text NOT NULL,
+	`first_seen` text DEFAULT '{}' NOT NULL,
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
 );
@@ -106,5 +107,6 @@ CREATE TABLE `users` (
 	`show_holdings` integer DEFAULT false NOT NULL,
 	`paused_since` text,
 	`last_synced_at` integer,
+	`sync_claimed_at` integer,
 	`created_at` integer DEFAULT (unixepoch()) NOT NULL
 );

@@ -13,7 +13,8 @@ import {
 } from "@/lib/pages";
 import { addDays } from "@/lib/quarters";
 import { loadLeague } from "@/server/leagues";
-import { getViewer, today } from "@/server/viewer";
+import { requireViewer, today } from "@/server/viewer";
+import { currentUser } from "@/server/session";
 import { syncStatus } from "@/server/status";
 
 export const metadata: Metadata = { title: "League" };
@@ -173,8 +174,8 @@ function LastQuarter({ page }: { page: LeaguePage }) {
   );
 }
 
-function Notice({ page }: { page: LeaguePage }) {
-  if (page.you?.paused) {
+function Notice({ show }: { show: boolean }) {
+  if (show) {
     return (
       <div className="mx-5 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-b border-rule py-3 lg:mx-10">
         <span className="flex items-center gap-3">
@@ -205,8 +206,11 @@ export default async function LeagueRoute({
   searchParams: Promise<{ league?: string; range?: string }>;
 }) {
   const params = await searchParams;
-  const viewer = (await getViewer())!;
+  const viewer = await requireViewer();
   const league = await loadLeague(viewer, params.league);
+  // A dropped link is flagged at once, a day before the rank shows as paused.
+  const needsReconnect =
+    viewer.kind === "user" && Boolean((await currentUser())?.pausedSince);
   if (!league) notFound();
   const day = today();
   const range = RANGES.find((r) => r.key === params.range)?.key ?? "quarter";
@@ -231,15 +235,20 @@ export default async function LeagueRoute({
         initial={viewer.name.charAt(0).toUpperCase()}
         status={await syncStatus(viewer)}
       />
-      <Notice page={page} />
+      <Notice show={Boolean(page.you?.paused) || needsReconnect} />
 
       {/* Desktop */}
       <main className="mx-auto hidden w-full max-w-[1440px] flex-1 flex-col gap-9 px-10 pt-6 pb-10 lg:flex">
         <div className="flex gap-x-14">
           <section className="flex min-w-0 flex-[1_1_280px] flex-col gap-9">
             <div className="flex flex-col gap-3">
-              <span className="label">
+              <span className="label flex items-center gap-2">
                 {kind} · {members}
+                {viewer.kind === "user" && (
+                  <Link href="/leagues" className="hover-text text-grey">
+                    · Switch
+                  </Link>
+                )}
               </span>
               <h1 className="serif m-0 text-[40px] leading-[1.05]">
                 {page.league.name}

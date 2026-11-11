@@ -20,6 +20,22 @@ export function niceTicks(min: number, max: number, target = 4): number[] {
 }
 
 /** A y-domain with headroom so lines never touch the frame. */
+/**
+ * Gridline values for a set of returns. When the returns span less than
+ * `minSpan` the lines cover the widened range the chart is drawn on, so a
+ * league's first days do not stack every label on the zero line.
+ */
+export function domainTicks(
+  values: readonly number[],
+  minSpan = 0.02,
+  target = 4,
+): number[] {
+  const hi = Math.max(0, ...values);
+  const lo = Math.min(0, ...values);
+  const extra = Math.max(0, minSpan - (hi - lo)) / 2;
+  return niceTicks(lo - extra, hi + extra, target);
+}
+
 export function paddedDomain(
   values: readonly number[],
   minSpan = 0.02,

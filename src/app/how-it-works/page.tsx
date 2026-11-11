@@ -63,7 +63,7 @@ const SECTIONS: { title: string; points: { term: string; text: string }[] }[] =
         },
         {
           term: "What is kept",
-          text: "A daily percentage return for each counted account, your habits as dates and tickers, and your badges. Balances are kept for ten days so a late-reported deposit can be corrected, then deleted.",
+          text: "A daily percentage return for each counted account, your habits as dates and tickers, and your badges. Balances are kept for ten days so a late-reported deposit can be corrected, then deleted. If a link drops, the last balance waits until you reconnect, so the gap can be scored fairly.",
         },
         {
           term: "Leaving",

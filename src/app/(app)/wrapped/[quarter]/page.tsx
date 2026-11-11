@@ -20,7 +20,7 @@ import { addDays, quarterOf } from "@/lib/quarters";
 import { shareCard } from "@/lib/share";
 import { loadLeague } from "@/server/leagues";
 import { shareToken } from "@/server/share-token";
-import { getViewer, today } from "@/server/viewer";
+import { requireViewer, today } from "@/server/viewer";
 
 export const metadata: Metadata = { title: "Wrapped" };
 
@@ -307,7 +307,7 @@ export default async function WrappedStory({
   const quarter = quarterOf(
     `${match[1]}-${String((Number(match[2]) - 1) * 3 + 1).padStart(2, "0")}-01`,
   );
-  const viewer = (await getViewer())!;
+  const viewer = await requireViewer();
   const league = await loadLeague(viewer, leagueId);
   const w = league && wrapped(league, viewer.id, quarter, today());
   if (!w) notFound();

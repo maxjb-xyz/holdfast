@@ -31,6 +31,8 @@ export const users = sqliteTable("users", {
   // member's score freezes there and their rank shows as paused.
   pausedSince: text("paused_since"),
   lastSyncedAt: integer("last_synced_at", { mode: "timestamp" }),
+  // When a sync last started, so two never run for one person at once.
+  syncClaimedAt: integer("sync_claimed_at", { mode: "timestamp" }),
   createdAt: createdAt(),
 });
 
@@ -45,7 +47,8 @@ export const oauthTokens = sqliteTable("oauth_tokens", {
     mode: "timestamp",
   }).notNull(),
   scope: text("scope").notNull().default(""),
-  // "active" or "needs_reconnect" (refresh failed; ranks show as paused).
+  // "active", "refreshing" (a refresh is in flight) or "needs_reconnect"
+  // (the person has to sign in again; their rank shows as paused).
   status: text("status").notNull().default("active"),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
@@ -139,6 +142,12 @@ export const userFacts = sqliteTable("user_facts", {
   startPrices: text("start_prices", { mode: "json" })
     .$type<Record<string, number>>()
     .notNull(),
+  // The day each current holding was first seen, for the One Year Hold badge
+  // when the brokerage's history does not reach back to the purchase.
+  firstSeen: text("first_seen", { mode: "json" })
+    .$type<Record<string, string>>()
+    .notNull()
+    .default({}),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
 

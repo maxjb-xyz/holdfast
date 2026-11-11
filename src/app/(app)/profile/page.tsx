@@ -4,12 +4,12 @@ import { ProfileView } from "@/components/profile-view";
 import { profilePage } from "@/lib/pages";
 import { loadLeague } from "@/server/leagues";
 import { syncStatus } from "@/server/status";
-import { getViewer, today } from "@/server/viewer";
+import { requireViewer, today } from "@/server/viewer";
 
 export const metadata: Metadata = { title: "Profile" };
 
 export default async function OwnProfile() {
-  const viewer = (await getViewer())!;
+  const viewer = await requireViewer();
   const league = await loadLeague(viewer);
   const page = league && profilePage(league, viewer.id, viewer.id, today());
   if (!page) notFound();

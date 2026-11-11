@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  domainTicks,
   linePath,
   niceTicks,
   paddedDomain,
@@ -119,5 +120,18 @@ describe("series helpers", () => {
     expect(d.startsWith("M0.0 0.0 C")).toBe(true);
     for (const [x, y] of many.slice(1))
       expect(d).toContain(` ${x.toFixed(1)} ${y.toFixed(1)}`);
+  });
+});
+
+describe("domainTicks", () => {
+  it("spreads gridlines over the widened range when returns are tiny", () => {
+    const ticks = domainTicks([0, 0.0032], 0.03, 3);
+    expect(ticks).toContain(0);
+    expect(ticks.length).toBeGreaterThanOrEqual(3);
+    expect(Math.min(...ticks)).toBeLessThan(0);
+    expect(Math.max(...ticks)).toBeGreaterThan(0.0032);
+  });
+  it("matches the plain ticks once returns span more than the minimum", () => {
+    expect(domainTicks([-0.02, 0.06])).toEqual(niceTicks(-0.02, 0.06));
   });
 });

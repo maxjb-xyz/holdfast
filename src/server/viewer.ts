@@ -1,5 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { DEMO_VIEWER_ID } from "@/lib/demo";
 import { toDateString } from "@/lib/quarters";
 import { currentUser } from "./session";
@@ -24,4 +25,14 @@ export async function getViewer(): Promise<Viewer | null> {
     return { kind: "demo", id: DEMO_VIEWER_ID, name: "You" };
   }
   return null;
+}
+
+/**
+ * The viewer, or a redirect to the front page. Pages call this themselves
+ * because a page can start rendering before its layout has turned anyone away.
+ */
+export async function requireViewer(): Promise<Viewer> {
+  const viewer = await getViewer();
+  if (!viewer) redirect("/");
+  return viewer;
 }

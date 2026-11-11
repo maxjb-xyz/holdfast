@@ -1,5 +1,5 @@
 import {
-  niceTicks,
+  domainTicks,
   paddedDomain,
   smoothPath,
   splitByPartial,
@@ -49,7 +49,7 @@ export function CareerChart({
   const domain = paddedDomain(values, 0.03);
   const y = (v: number) =>
     pt + ((height - pt - pb) * (domain.top - v)) / (domain.top - domain.bottom);
-  const ticks = niceTicks(Math.min(0, ...values), Math.max(0, ...values), 3);
+  const ticks = domainTicks(values, 0.03, 3);
   const shown = quarters.slice(-SLOTS);
 
   return (
