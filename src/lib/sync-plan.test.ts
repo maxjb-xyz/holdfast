@@ -144,7 +144,7 @@ describe("planSync", () => {
     expect(plan.pausedSince).toBeNull();
   });
 
-  it("pauses when a counted account is no longer listed at all", () => {
+  it("stops counting an account its owner removed, instead of pausing for good", () => {
     const plan = planSync(
       input({
         fetched: [account()],
@@ -155,7 +155,40 @@ describe("planSync", () => {
       }),
     );
     expect(plan.goneAccountIds).toEqual(["gone"]);
-    expect(plan.pausedSince).toBe("2026-11-09");
+    expect(plan.pausedSince).toBeNull();
+  });
+
+  it("does not treat an account that was listed but not read as removed", () => {
+    const plan = planSync(
+      input({
+        fetched: [account()],
+        listedIds: ["a1", "a9"],
+        storedAccounts: [
+          { id: "a1", counted: true, lastSyncedOn: "2026-11-10" },
+          { id: "a9", counted: true, lastSyncedOn: "2026-11-10" },
+        ],
+      }),
+    );
+    expect(plan.goneAccountIds).toEqual([]);
+  });
+
+  it("never rewrites settled days when transactions cannot be read", () => {
+    // Nov 9 had a 1000 deposit and was scored 0% while transactions were readable.
+    const base = {
+      storedAccounts: [{ id: "a1", counted: true, lastSyncedOn: "2026-11-10" }],
+      snapshots: [
+        { accountId: "a1", date: "2026-11-08", balance: 1000 },
+        { accountId: "a1", date: "2026-11-09", balance: 2000 },
+        { accountId: "a1", date: "2026-11-10", balance: 2000 },
+      ],
+    };
+    const dropped = planSync(
+      input({ ...base, fetched: [account({ connected: false, activities: null, positions: null })] }),
+    );
+    expect(dropped.returns).toEqual([]);
+    const unread = planSync(input({ ...base, fetched: [account({ balance: 2020, activities: null })] }));
+    expect(unread.returns.map((r) => r.date)).toEqual([TODAY]);
+    expect(unread.returns[0].partial).toBe(true);
   });
 
   it("after a long disconnect, puts the whole move on the catch-up day", () => {
@@ -254,5 +287,68 @@ describe("planSync", () => {
     );
     expect(plan.badges.find((b) => b.key === "one_year_hold")).toBeUndefined();
     expect(plan.facts?.firstSeen).toEqual({ VTI: TODAY });
+  });
+
+  it("awards One Year Hold once, not again every quarter", () => {
+    const facts = { buyMonths: [], buyDates: [], dividendDates: [], holdings: [], holdingSince: null };
+    const plan = planSync(
+      input({
+        heldBadges: ["one_year_hold"],
+        storedFacts: { facts, quarter: "2026-Q4", startPrices: {}, firstSeen: { VTI: "2025-01-15" } },
+        fetched: [
+          account({ positions: [{ symbol: "VTI", units: 10, price: 100, cashEquivalent: false }] }),
+        ],
+      }),
+    );
+    expect(plan.badges.find((b) => b.key === "one_year_hold")).toBeUndefined();
+  });
+
+  it("settles last quarter's badges with dividends that arrived after it closed", () => {
+    const stored = {
+      buyMonths: [],
+      buyDates: [],
+      dividendDates: ["2026-07-10", "2026-08-10"],
+      holdings: [{ ticker: "VTI", share: 1, change: 0.01 }],
+      holdingSince: "2026-06-01",
+    };
+    const plan = planSync(
+      input({
+        today: "2026-10-01",
+        storedFacts: { facts: stored, quarter: "2026-Q3", startPrices: {}, firstSeen: { VTI: "2026-06-01" } },
+        fetched: [
+          account({
+            transactionsThrough: "2026-10-01",
+            activities: [
+              { type: "DIVIDEND", date: "2026-07-10", amount: 5, units: 0, symbol: "VTI" },
+              { type: "DIVIDEND", date: "2026-08-10", amount: 5, units: 0, symbol: "VTI" },
+              { type: "DIVIDEND", date: "2026-09-29", amount: 5, units: 0, symbol: "VTI" },
+              { type: "DIVIDEND", date: "2026-10-01", amount: 5, units: 0, symbol: "VTI" },
+            ],
+            positions: [{ symbol: "VTI", units: 10, price: 100, cashEquivalent: false }],
+          }),
+        ],
+      }),
+    );
+    expect(plan.freeze?.quarter).toBe("2026-Q3");
+    expect(plan.freeze?.facts.dividendDates).toEqual(["2026-07-10", "2026-08-10", "2026-09-29"]);
+    expect(plan.freeze?.facts.holdings).toEqual(stored.holdings);
+    const collector = plan.badges.find((b) => b.key === "dividend_collector");
+    expect(collector).toMatchObject({ quarter: "2026-Q3", earnedOn: "2026-09-29" });
+    expect(plan.badges.some((b) => b.quarter === "2026-Q4" && b.key === "dividend_collector")).toBe(false);
+  });
+
+  it("on a first sync dates a holding from how far its own account's history reaches", () => {
+    const plan = planSync(
+      input({
+        fetched: [
+          account({
+            activities: [{ type: "DIVIDEND", date: "2025-02-01", amount: 3, units: 0, symbol: "OLD" }],
+            positions: [{ symbol: "OLD", units: 5, price: 10, cashEquivalent: false }],
+          }),
+          account({ id: "a2", positions: [{ symbol: "NEW", units: 5, price: 10, cashEquivalent: false }] }),
+        ],
+      }),
+    );
+    expect(plan.facts?.firstSeen).toEqual({ OLD: "2025-02-01", NEW: TODAY });
   });
 });

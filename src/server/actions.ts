@@ -121,8 +121,8 @@ export async function disconnectAction(): Promise<void> {
   if (viewer?.kind !== "user") redirect("/");
   const { disconnect } = await import("./league-admin");
   const { snaptradeConfig } = await import("./env");
-  await disconnect(viewer.id, await snaptradeConfig());
-  redirect("/leagues?notice=disconnected");
+  const revoked = await disconnect(viewer.id, await snaptradeConfig());
+  redirect(`/leagues?notice=${revoked ? "disconnected" : "disconnected-check"}`);
 }
 
 /** Deletes everything about the person in one step and signs them out. */
@@ -130,14 +130,15 @@ export async function deleteEverythingAction(): Promise<void> {
   const viewer = await getViewer();
   if (!viewer) redirect("/");
   const jar = await cookies();
+  let revoked = true;
   if (viewer.kind === "user") {
     const { deleteEverything } = await import("./league-admin");
     const { snaptradeConfig } = await import("./env");
     const { SESSION_COOKIE } = await import("./session");
-    await deleteEverything(viewer.id, await snaptradeConfig());
+    revoked = await deleteEverything(viewer.id, await snaptradeConfig());
     jar.delete(SESSION_COOKIE);
   }
   jar.delete(DEMO_COOKIE);
   jar.delete(DEMO_PREFS_COOKIE);
-  redirect("/?notice=deleted");
+  redirect(revoked ? "/?notice=deleted" : "/?notice=deleted-check");
 }

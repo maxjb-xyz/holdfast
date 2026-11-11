@@ -186,7 +186,14 @@ async function revokeAccess(
       config.encryptionKey,
       userId,
     );
-    return await revokeToken(config, refreshToken);
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        if (await revokeToken(config, refreshToken)) return true;
+      } catch (error) {
+        console.error("revoke attempt failed", error);
+      }
+    }
+    return false;
   } catch (error) {
     console.error("revoke failed", error);
     return false;

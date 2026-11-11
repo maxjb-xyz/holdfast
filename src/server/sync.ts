@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import * as t from "@/db/schema";
+import type { BadgeKey } from "@/lib/badges";
 import { ACTIVITY_LOOKBACK_DAYS } from "@/lib/sync-math";
 import { addDays, toDateString } from "@/lib/quarters";
 import type { SnapTradeConfig } from "./env";
@@ -12,11 +13,11 @@ import {
 } from "./snaptrade/access";
 import { SnapTradeApi } from "./snaptrade/api";
 import { refreshTokens } from "./snaptrade/oauth";
-import { tokenStore } from "./snaptrade/token-store";
+import { pauseForReconnect, tokenStore } from "./snaptrade/token-store";
 import { planSync, type FetchedAccount } from "@/lib/sync-plan";
 
 /** Accounts read per person, to stay inside a Worker's request budget. */
-const MAX_ACCOUNTS = 10;
+const MAX_ACCOUNTS = 8;
 /** D1 allows 100 bound values per statement. */
 const MAX_PARAMS = 90;
 
@@ -35,7 +36,7 @@ function chunks<T>(items: readonly T[], columns: number): T[][] {
 async function fetchAll(
   accessToken: string,
   today: string,
-): Promise<FetchedAccount[]> {
+): Promise<{ accounts: FetchedAccount[]; listedIds: string[] }> {
   const api = new SnapTradeApi(accessToken);
   const [accounts, connections] = await Promise.all([
     api.accounts(),
@@ -56,7 +57,7 @@ async function fetchAll(
       return null;
     }
   };
-  return Promise.all(
+  const read = await Promise.all(
     accounts.slice(0, MAX_ACCOUNTS).map(async (a) => {
       const connected =
         a.connectionId === null || !disabled.has(a.connectionId);
@@ -78,6 +79,7 @@ async function fetchAll(
       };
     }),
   );
+  return { accounts: read, listedIds: accounts.map((a) => a.id) };
 }
 
 /**
@@ -118,20 +120,25 @@ export async function syncUser(
   const store = tokenStore(userId, config.encryptionKey);
 
   let fetched: FetchedAccount[];
+  let listedIds: string[];
   try {
-    fetched = await withAccessToken(
+    ({ accounts: fetched, listedIds } = await withAccessToken(
       store,
       (refreshToken) => refreshTokens(config, refreshToken),
       (accessToken) => fetchAll(accessToken, today),
-    );
+    ));
   } catch (error) {
-    if (error instanceof ReconnectNeeded) return "reconnect";
+    if (error instanceof ReconnectNeeded) {
+      // Covers a person whose tokens are gone altogether: still paused.
+      await pauseForReconnect(userId);
+      return "reconnect";
+    }
     throw error;
   }
 
   const db = await getDb();
   const ids = fetched.map((a) => a.id);
-  const [owned, clashing, storedFacts, user] = await Promise.all([
+  const [owned, clashing, storedFacts, user, heldBadges, snapshots] = await Promise.all([
     db.select().from(t.accounts).where(eq(t.accounts.userId, userId)),
     ids.length === 0
       ? []
@@ -144,6 +151,22 @@ export async function syncUser(
       .select({ pausedSince: t.users.pausedSince })
       .from(t.users)
       .where(eq(t.users.id, userId)),
+    db
+      .select({ key: t.badges.badgeKey })
+      .from(t.badges)
+      .where(eq(t.badges.userId, userId)),
+    db
+      .select()
+      .from(t.balanceSnapshots)
+      .where(
+        inArray(
+          t.balanceSnapshots.accountId,
+          db
+            .select({ id: t.accounts.id })
+            .from(t.accounts)
+            .where(eq(t.accounts.userId, userId)),
+        ),
+      ),
   ]);
   // The person deleted their data while this sync was reading. Write nothing.
   if (user.length === 0) return "busy";
@@ -151,13 +174,6 @@ export async function syncUser(
   const taken = new Set(clashing.map((c) => c.id));
   const mine = fetched.filter((a) => !taken.has(a.id));
   const ownedIds = owned.map((a) => a.id);
-  const snapshots =
-    ownedIds.length === 0
-      ? []
-      : await db
-          .select()
-          .from(t.balanceSnapshots)
-          .where(inArray(t.balanceSnapshots.accountId, ownedIds));
 
   const plan = planSync({
     today,
@@ -166,6 +182,8 @@ export async function syncUser(
     snapshots,
     storedFacts: storedFacts[0] ?? null,
     pausedSince: user[0].pausedSince,
+    listedIds,
+    heldBadges: heldBadges.map((b) => b.key as BadgeKey),
   });
 
   const now = new Date();
@@ -199,11 +217,11 @@ export async function syncUser(
     writes.push(
       db
         .update(t.accounts)
-        .set({ connected: false })
+        .set({ connected: false, counted: false })
         .where(
           and(
             eq(t.accounts.userId, userId),
-            inArray(t.accounts.id, plan.goneAccountIds),
+            inArray(t.accounts.id, plan.goneAccountIds.slice(0, 80)),
           ),
         ),
     );
@@ -292,7 +310,16 @@ export async function syncUser(
   writes.push(
     db
       .update(t.users)
-      .set({ pausedSince: plan.pausedSince, lastSyncedAt: now })
+      .set({
+        // If the connection was cut while this sync was reading, by a
+        // disconnect or a failed refresh, the pause that set stays in place.
+        pausedSince: sql`case when exists (
+            select 1 from oauth_tokens o
+            where o.user_id = ${userId} and o.status <> 'needs_reconnect')
+          then ${plan.pausedSince}
+          else coalesce(${t.users.pausedSince}, ${today}) end`,
+        lastSyncedAt: now,
+      })
       .where(eq(t.users.id, userId)),
   );
   // One batch: either the whole day is recorded or none of it is.
@@ -301,15 +328,31 @@ export async function syncUser(
   return "synced";
 }
 
-/** People whose connection still works, least recently synced first. */
+/** How many people one invocation hands out, inside a Worker's request budget. */
+export const SYNC_BATCH = 40;
+
+/**
+ * People whose connection still works and who have not been tried in the
+ * last six hours, longest-waiting first. Ordering by the last attempt, not
+ * the last success, keeps a person whose sync keeps failing from holding
+ * the front of the line.
+ */
 export async function usersToSync(): Promise<string[]> {
   const db = await getDb();
   const rows = await db
     .select({ id: t.users.id })
     .from(t.users)
     .innerJoin(t.oauthTokens, eq(t.oauthTokens.userId, t.users.id))
-    .where(ne(t.oauthTokens.status, "needs_reconnect"))
-    .orderBy(t.users.lastSyncedAt)
-    .limit(200);
+    .where(
+      and(
+        ne(t.oauthTokens.status, "needs_reconnect"),
+        or(
+          isNull(t.users.syncClaimedAt),
+          lt(t.users.syncClaimedAt, new Date(Date.now() - 6 * 3_600_000)),
+        ),
+      ),
+    )
+    .orderBy(t.users.syncClaimedAt)
+    .limit(SYNC_BATCH);
   return rows.map((r) => r.id);
 }

@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, lt, or, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { oauthTokens, users } from "@/db/schema";
 import { toDateString } from "@/lib/quarters";
@@ -125,7 +125,11 @@ export function tokenStore(userId: string, key: string): TokenStore {
       sealedRefresh.set(tokens.refreshToken, refreshTokenEnc);
     },
 
+    // Both of these act only while the row still holds a token this request
+    // has seen. If another request has rotated it since, the row is theirs.
     async release(): Promise<void> {
+      const seen = [...sealedRefresh.values()];
+      if (seen.length === 0) return;
       const db = await getDb();
       await db
         .update(oauthTokens)
@@ -134,10 +138,19 @@ export function tokenStore(userId: string, key: string): TokenStore {
           and(
             eq(oauthTokens.userId, userId),
             eq(oauthTokens.status, "refreshing"),
+            inArray(oauthTokens.refreshTokenEnc, seen),
           ),
         );
     },
 
-    markReconnect: () => pauseForReconnect(userId),
+    async markReconnect(): Promise<void> {
+      const db = await getDb();
+      const [row] = await db
+        .select({ sealed: oauthTokens.refreshTokenEnc })
+        .from(oauthTokens)
+        .where(eq(oauthTokens.userId, userId));
+      if (row && ![...sealedRefresh.values()].includes(row.sealed)) return;
+      await pauseForReconnect(userId);
+    },
   };
 }

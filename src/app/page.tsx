@@ -17,6 +17,8 @@ const NOTICES: Record<string, string> = {
   failed: "Sign-in did not complete. Nothing was connected. Please try again.",
   full: "This preview can only hold five SnapTrade users, and it is full. The demo league is open to everyone.",
   deleted: "Your data has been deleted and your SnapTrade access revoked.",
+  "deleted-check":
+    "Your data has been deleted. SnapTrade did not confirm that access was revoked, so please also remove Holdfast in your SnapTrade settings.",
 };
 
 const FACTS: { icon: IconName; title: string; text: string }[] = [

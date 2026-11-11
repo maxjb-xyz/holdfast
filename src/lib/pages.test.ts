@@ -257,6 +257,9 @@ describe("profilePage", () => {
     expect(page?.career).toBeNull();
     expect(page?.badges).toBeNull();
     expect(page?.rhythm).toBeNull();
+    // The style label and badge count come from habits, so they go too.
+    expect(page?.style).toBe("Long-Term Investor");
+    expect(page?.badgeCount).toBe(0);
     expect(page?.stats.map((s) => s.label)).toEqual([
       "This quarter",
       "Current rank",

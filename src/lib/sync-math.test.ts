@@ -4,6 +4,7 @@ import {
   buildFacts,
   currentPrices,
   firstSeenDays,
+  flowsByDay,
   netDepositsByDay,
   recomputeWindow,
   weightsFor,
@@ -232,16 +233,15 @@ describe("buildFacts", () => {
   it("does not assume a holding is older than the evidence for it", () => {
     // Nothing is known about when these were bought: the clock starts today.
     expect(buildFacts({ activities: [], positions, startPrices: {}, today }).holdingSince).toBe(today);
-    // A dividend two years back proves the history reaches that far, and no
-    // opening trade appears in it, so the holding is at least that old.
-    const reach = buildFacts({
-      activities: [act("DIVIDEND", "2024-11-20", { amount: 5 })],
+    // An old trade in another holding says nothing about this one.
+    const other = buildFacts({
+      activities: [act("BUY", "2024-10-01", { symbol: "OLD", units: 1 })],
       positions,
       startPrices: {},
       today,
     });
-    expect(reach.holdingSince).toBe("2024-11-20");
-    // Holdfast saw it held on an earlier sync.
+    expect(other.holdingSince).toBe(today);
+    // Evidence carried from earlier syncs.
     const seen = buildFacts({
       activities: [],
       positions,
@@ -252,9 +252,27 @@ describe("buildFacts", () => {
     expect(seen.holdingSince).toBe("2026-03-01");
   });
 
-  it("carries first-seen days forward and forgets sold holdings", () => {
-    expect(firstSeenDays(positions, { VTI: "2026-03-01", GONE: "2025-01-01" }, today)).toEqual({
+  it("finds the opening trade despite rounding in fractional units", () => {
+    const facts = buildFacts({
+      activities: [act("BUY", "2026-11-05", { symbol: "VTI", units: 3.33333 })],
+      positions: [{ symbol: "VTI", units: 3.3333333, price: 100, cashEquivalent: false }],
+      startPrices: {},
+      firstSeen: { VTI: "2024-10-01" },
+      today,
+    });
+    expect(facts.holdingSince).toBe("2026-11-05");
+  });
+
+  it("carries first-seen days forward, starts new holdings today, and forgets sold ones", () => {
+    expect(firstSeenDays(positions, { VTI: "2026-03-01", GONE: "2025-01-01" }, today, { BND: "2024-01-01" })).toEqual({
       VTI: "2026-03-01",
+      BND: today,
+    });
+  });
+
+  it("on a first sync dates holdings from how far the account's history reaches", () => {
+    expect(firstSeenDays(positions, null, today, { VTI: "2025-02-01" })).toEqual({
+      VTI: "2025-02-01",
       BND: today,
     });
   });
@@ -265,5 +283,39 @@ describe("buildFacts", () => {
 
   it("lists current prices for the next quarter's baseline", () => {
     expect(currentPrices(positions)).toEqual({ VTI: 310, BND: 90 });
+  });
+});
+
+describe("flowsByDay", () => {
+  it("counts holdings transferred in or out as a flow, valued by units and price", () => {
+    const { flows, unclear } = flowsByDay([
+      { type: "EXTERNAL_ASSET_TRANSFER_IN", date: "2026-11-03", amount: 0, units: 10, price: 50, symbol: "VTI" },
+      { type: "EXTERNAL_ASSET_TRANSFER_OUT", date: "2026-11-04", amount: 0, units: 2, price: 50, symbol: "VTI" },
+      { type: "TRANSFER", date: "2026-11-05", amount: 0, units: -4, price: 25, symbol: "BND" },
+      { type: "DEPOSIT", date: "2026-11-06", amount: 300, units: 0, symbol: null },
+    ]);
+    expect(flows.get("2026-11-03")).toBe(500);
+    expect(flows.get("2026-11-04")).toBe(-100);
+    expect(flows.get("2026-11-05")).toBe(-100);
+    expect(flows.get("2026-11-06")).toBe(300);
+    expect(unclear.size).toBe(0);
+  });
+
+  it("flags a transfer it cannot value, and the day is scored as partial", () => {
+    const { flows, unclear } = flowsByDay([
+      { type: "TRANSFER", date: "2026-11-10", amount: 0, units: 10, symbol: "VTI" },
+    ]);
+    expect(flows.size).toBe(0);
+    expect([...unclear]).toEqual(["2026-11-10"]);
+    const rows = recomputeWindow(
+      [
+        { date: "2026-11-09", balance: 1000 },
+        { date: "2026-11-10", balance: 2000 },
+      ],
+      flows,
+      "2026-11-10",
+      unclear,
+    );
+    expect(rows[0].partial).toBe(true);
   });
 });

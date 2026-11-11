@@ -2,7 +2,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { NextResponse, type NextRequest } from "next/server";
 import { isCronRequest } from "@/server/cron";
 import { snaptradeConfig } from "@/server/env";
-import { syncUser, usersToSync } from "@/server/sync";
+import { SYNC_BATCH, syncUser, usersToSync } from "@/server/sync";
 
 /**
  * The nightly sync. Called by the Worker's scheduled handler, never by a
@@ -51,6 +51,20 @@ export async function POST(request: NextRequest) {
     if (r.status === "rejected") console.error("nightly sync failed", r.reason);
   }
   const failed = results.filter((r) => r.status === "rejected").length;
+  // A full batch means more people may be waiting: hand the rest to a fresh
+  // invocation. Everyone just tried is skipped for six hours, so this ends.
+  const round = Number(request.nextUrl.searchParams.get("round") ?? "0");
+  if (self && ids.length === SYNC_BATCH && round < 20) {
+    const { ctx } = await getCloudflareContext({ async: true });
+    ctx.waitUntil(
+      self
+        .fetch(`https://holdfast.internal/api/cron/sync?round=${round + 1}`, {
+          method: "POST",
+          headers: { authorization: authorization as string },
+        })
+        .catch((error) => console.error("nightly sync hand-off failed", error)),
+    );
+  }
   return NextResponse.json(
     { ok: failed === 0, users: ids.length, failed },
     { status: failed === 0 ? 200 : 500 },

@@ -74,16 +74,29 @@ async function tokenRequest(
   });
   if (response.status >= 400 && response.status < 500) {
     let error: string | null = null;
+    let readable = false;
     try {
       const body = (await response.json()) as { error?: unknown };
+      readable = body !== null && typeof body === "object";
       error = typeof body.error === "string" ? body.error : null;
     } catch {
-      error = null;
+      readable = false;
     }
     // Only a rejected code or refresh token means the person must sign in
-    // again. A wrong client secret or a rate limit is this app's problem and
-    // must not sign everyone out.
-    if (error === "invalid_grant" || (error === null && response.status === 400)) {
+    // again. A wrong client secret, a malformed request, a rate limit or an
+    // error page from something in between is this app's problem, and must
+    // not sign everyone out.
+    const ours = [
+      "invalid_client",
+      "invalid_request",
+      "unauthorized_client",
+      "unsupported_grant_type",
+      "invalid_scope",
+    ];
+    const rejected =
+      error === "invalid_grant" ||
+      (response.status === 400 && readable && !ours.includes(error ?? ""));
+    if (rejected) {
       throw new GrantRejected(`Token endpoint answered ${response.status}`);
     }
     throw new Error(

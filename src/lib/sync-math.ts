@@ -12,6 +12,8 @@ export type Activity = {
   date: string;
   amount: number;
   units: number;
+  /** Price per unit, where the brokerage gives one. */
+  price?: number | null;
   symbol: string | null;
 };
 
@@ -31,22 +33,51 @@ export const ACTIVITY_LOOKBACK_DAYS = 800;
 
 const DIVIDEND_TYPES = new Set(["DIVIDEND", "STOCK_DIVIDEND", "SUBSTITUTE_DIVIDEND"]);
 
+const MONEY_IN = new Set(["CONTRIBUTION", "DEPOSIT"]);
+const MONEY_OUT = new Set(["WITHDRAWAL"]);
+const ASSETS_IN = new Set(["EXTERNAL_ASSET_TRANSFER_IN"]);
+const ASSETS_OUT = new Set(["EXTERNAL_ASSET_TRANSFER_OUT"]);
+
 /**
- * Money moved in or out by the account holder, per day. Deposits are
- * positive. Dividends, interest and fees are part of the return, not a flow.
+ * Money and holdings moved in or out by the account holder, per day.
+ * Deposits are positive. Dividends, interest and fees are part of the
+ * return, not a flow.
+ *
+ * `unclear` lists days with a transfer whose value could not be worked out.
+ * Those days are marked partial, because an unvalued transfer in would
+ * otherwise look like a gain.
  */
-export function netDepositsByDay(activities: readonly Activity[]): Map<string, number> {
+export function flowsByDay(activities: readonly Activity[]): {
+  flows: Map<string, number>;
+  unclear: Set<string>;
+} {
   const flows = new Map<string, number>();
+  const unclear = new Set<string>();
   for (const a of activities) {
-    if (!Number.isFinite(a.amount)) continue;
-    let flow = 0;
-    if (a.type === "CONTRIBUTION") flow = Math.abs(a.amount);
-    else if (a.type === "WITHDRAWAL") flow = -Math.abs(a.amount);
-    // A transfer's sign says which way it went.
-    else if (a.type === "TRANSFER") flow = a.amount;
-    if (flow !== 0) flows.set(a.date, (flows.get(a.date) ?? 0) + flow);
+    const amount = Number.isFinite(a.amount) ? a.amount : 0;
+    const units = Number.isFinite(a.units) ? a.units : 0;
+    const price = a.price && Number.isFinite(a.price) && a.price > 0 ? a.price : null;
+    // What the moved holdings were worth, when cash did not say.
+    const worth = amount !== 0 ? Math.abs(amount) : price !== null ? Math.abs(units) * price : null;
+    let flow: number | null = 0;
+    if (MONEY_IN.has(a.type)) flow = Math.abs(amount);
+    else if (MONEY_OUT.has(a.type)) flow = -Math.abs(amount);
+    else if (ASSETS_IN.has(a.type)) flow = worth;
+    else if (ASSETS_OUT.has(a.type)) flow = worth === null ? null : -worth;
+    else if (a.type === "TRANSFER") {
+      // A transfer's sign says which way it went: cash first, then units.
+      if (amount !== 0) flow = amount;
+      else if (units !== 0) flow = price === null ? null : units * price;
+    }
+    if (flow === null) unclear.add(a.date);
+    else if (flow !== 0) flows.set(a.date, (flows.get(a.date) ?? 0) + flow);
   }
-  return flows;
+  return { flows, unclear };
+}
+
+/** The flows alone. See `flowsByDay`. */
+export function netDepositsByDay(activities: readonly Activity[]): Map<string, number> {
+  return flowsByDay(activities).flows;
 }
 
 /**
@@ -65,6 +96,7 @@ export function recomputeWindow(
   snapshots: readonly Snapshot[],
   flows: ReadonlyMap<string, number>,
   transactionsThrough: string | null,
+  unclear: ReadonlySet<string> = new Set(),
 ): DailyReturnRow[] {
   const sorted = [...snapshots].sort((a, b) => (a.date < b.date ? -1 : 1));
   const rows: DailyReturnRow[] = [];
@@ -73,11 +105,14 @@ export function recomputeWindow(
     const cur = sorted[i];
     if (cur.date === prev.date) continue;
     let net = 0;
+    let unvalued = false;
     for (let d = addDays(prev.date, 1); d <= cur.date; d = addDays(d, 1)) {
       net += flows.get(d) ?? 0;
+      unvalued ||= unclear.has(d);
     }
     const gap = daysInclusive(prev.date, cur.date) - 2;
-    const unsure = transactionsThrough === null || transactionsThrough < cur.date;
+    const unsure =
+      unvalued || transactionsThrough === null || transactionsThrough < cur.date;
     for (let d = addDays(prev.date, 1); d < cur.date; d = addDays(d, 1)) {
       // A long silence is worth flagging. A weekend-length one is not.
       rows.push({ date: d, dailyReturn: 0, flowRate: 0, partial: gap > 4 || unsure });
@@ -113,9 +148,9 @@ export function weightsFor(
  * The day the current unbroken holding of each symbol began.
  *
  * When the opening trade is in the history, that is the day. When it is not,
- * the holding is only known to be as old as the evidence: the earliest
- * transaction the brokerage reports, or the day Holdfast first saw it,
- * whichever is earlier. Holdfast does not assume a holding is older than that.
+ * the holding is only as old as the evidence for it, which is the date in
+ * `firstSeen` (see `firstSeenDays`). Holdfast does not assume a holding is
+ * older than that.
  */
 function heldSince(
   activities: readonly Activity[],
@@ -131,30 +166,28 @@ function heldSince(
   const delta = (a: Activity): number => {
     const u = Math.abs(a.units);
     if (a.type === "BUY" || a.type === "REI" || a.type === "STOCK_DIVIDEND") return u;
-    if (a.type === "SELL") return -u;
+    if (a.type === "EXTERNAL_ASSET_TRANSFER_IN") return u;
+    if (a.type === "SELL" || a.type === "EXTERNAL_ASSET_TRANSFER_OUT") return -u;
     if (a.type === "TRANSFER" || a.type === "SPLIT") return a.units;
     return 0;
   };
-  let historyReach = today;
-  for (const a of activities) {
-    if (a.date < historyReach) historyReach = a.date;
-  }
   for (const [symbol, unitsNow] of held) {
     const moves = activities
       .filter((a) => a.symbol === symbol && a.date <= today && delta(a) !== 0)
       .sort((a, b) => (a.date < b.date ? 1 : -1)); // newest first
     // Walk backwards from today's units to find when the position opened.
+    // Brokerages round fractional units, so "zero" allows a little slack.
+    const slack = Math.max(1e-9, unitsNow * 1e-4);
     let units = unitsNow;
     let opened: string | null = null;
     for (const move of moves) {
       units -= delta(move);
-      if (units <= 1e-9) {
+      if (units <= slack) {
         opened = move.date;
         break;
       }
     }
-    const seen = firstSeen[symbol] ?? today;
-    since.set(symbol, opened ?? (seen < historyReach ? seen : historyReach));
+    since.set(symbol, opened ?? firstSeen[symbol] ?? today);
   }
   return since;
 }
@@ -231,19 +264,26 @@ export function currentPrices(positions: readonly Position[]): Record<string, nu
 }
 
 /**
- * The day each current holding was first seen, carried forward from the last
- * sync. A symbol that is no longer held drops out, so buying it again later
- * starts a new clock.
+ * The earliest day each current holding is known to have been held, carried
+ * forward from the last sync.
+ *
+ * A symbol that is new since the last sync starts today. On a person's very
+ * first sync there is no last sync, so `reach` gives each symbol the date of
+ * the earliest transaction in the account that holds it: the history goes
+ * back that far without showing the holding being opened. A symbol that is
+ * no longer held drops out, so buying it again later starts a new clock.
  */
 export function firstSeenDays(
   positions: readonly Position[],
-  previous: Readonly<Record<string, string>>,
+  previous: Readonly<Record<string, string>> | null,
   today: string,
+  reach: Readonly<Record<string, string>> = {},
 ): Record<string, string> {
   const seen: Record<string, string> = {};
   for (const p of positions) {
     if (p.cashEquivalent || p.units <= 0) continue;
-    seen[p.symbol] = previous[p.symbol] ?? today;
+    const fallback = previous === null ? (reach[p.symbol] ?? today) : today;
+    seen[p.symbol] = previous?.[p.symbol] ?? fallback;
   }
   return seen;
 }

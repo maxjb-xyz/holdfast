@@ -32,6 +32,7 @@ export type SnapActivity = {
   date: string;
   amount: number;
   units: number;
+  price: number | null;
   symbol: string | null;
 };
 
@@ -112,7 +113,7 @@ export class SnapTradeApi {
   async activities(accountId: string, startDate: string): Promise<SnapActivity[]> {
     const all: SnapActivity[] = [];
     const limit = 1000;
-    for (let offset = 0; offset < 5000; offset += limit) {
+    for (let offset = 0; offset < 3000; offset += limit) {
       const page = list(
         await this.get(`/accounts/${encodeURIComponent(accountId)}/activities`, {
           startDate,
@@ -131,6 +132,7 @@ export class SnapTradeApi {
           date,
           amount: num(t.amount) ?? 0,
           units: num(t.units) ?? 0,
+          price: num(t.price),
           symbol: str(symbol.raw_symbol) ?? str(symbol.symbol),
         });
       }

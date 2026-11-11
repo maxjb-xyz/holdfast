@@ -174,4 +174,20 @@ describe("withAccessToken", () => {
     await expect(withAccessToken(m.store, rotate, async () => { throw new Error("503 from brokerage"); }, opts)).rejects.toThrow("503");
     expect(m.log).toEqual([]);
   });
+
+  it("tries again when saving the rotated pair fails, because the old token is already spent", async () => {
+    const m = memoryStore({ accessExpiresAt: NOW + 60_000 });
+    const save = m.store.save;
+    let failures = 2;
+    let refreshes = 0;
+    m.store.save = async (t) => {
+      if (failures-- > 0) throw new Error("database busy");
+      await save(t);
+    };
+    const once = async () => (refreshes++, rotate());
+    await withAccessToken(m.store, once, async () => null, opts);
+    expect(refreshes).toBe(1);
+    expect(m.get()?.status).toBe("active");
+    expect(m.get()?.refreshToken).not.toBe("r1");
+  });
 });

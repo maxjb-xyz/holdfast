@@ -32,6 +32,8 @@ const NOTICES: Record<string, string> = {
   signin: "Sign in with SnapTrade to make a league of your own.",
   disconnected:
     "SnapTrade is disconnected. Your rank is paused until you sign in again.",
+  "disconnected-check":
+    "Your tokens are deleted and your rank is paused. SnapTrade did not confirm that access was revoked, so please also remove Holdfast in your SnapTrade settings.",
 };
 
 const field =
@@ -274,7 +276,9 @@ export default async function LeaguesRoute({
                   <span className="flex-[1_1_240px] text-[13px] text-dim">
                     One step, and it cannot be undone. Revokes SnapTrade
                     access, removes you from every league, and deletes your
-                    returns, habits, badges and balances.
+                    returns, habits, badges and balances. Share cards you
+                    already sent keep working. They hold a first name and
+                    percentages only.
                   </span>
                   <button type="submit" className={danger}>
                     Delete all my data

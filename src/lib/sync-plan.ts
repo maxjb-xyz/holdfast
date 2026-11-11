@@ -4,14 +4,14 @@
  */
 
 import { badgeStatuses, type BadgeKey, type HabitFacts } from "./badges";
-import { addDays, quarterOf } from "./quarters";
+import { addDays, previousQuarter, quarterOf } from "./quarters";
 import type { DailyReturnRow } from "./scoring";
 import {
   BALANCE_WINDOW_DAYS,
   buildFacts,
   currentPrices,
   firstSeenDays,
-  netDepositsByDay,
+  flowsByDay,
   recomputeWindow,
   weightsFor,
   type Activity,
@@ -55,6 +55,13 @@ export type SyncInput = {
   snapshots: readonly (Snapshot & { accountId: string })[];
   storedFacts: StoredFacts | null;
   pausedSince: string | null;
+  /**
+   * Every account id SnapTrade listed, including any that were not read
+   * this time. Defaults to the ids in `fetched`.
+   */
+  listedIds?: readonly string[];
+  /** Badges the person already holds, from any quarter. */
+  heldBadges?: readonly BadgeKey[];
 };
 
 export type SyncPlan = {
@@ -66,7 +73,10 @@ export type SyncPlan = {
     connected: boolean;
     lastSyncedOn: string | null;
   }[];
-  /** Stored accounts SnapTrade no longer lists. */
+  /**
+   * Stored accounts SnapTrade no longer lists: the person removed them
+   * there. They stop counting, so they cannot hold a rank paused for good.
+   */
   goneAccountIds: string[];
   snapshots: { accountId: string; date: string; balance: number }[];
   returns: (DailyReturnRow & { accountId: string })[];
@@ -111,17 +121,25 @@ export function planSync(input: SyncInput): SyncPlan {
     }
     perAccount.set(account.id, history);
     if (history.length < 2) continue;
-    const flows = netDepositsByDay(account.activities ?? []);
+    const { flows, unclear } = flowsByDay(account.activities ?? []);
     const rows = recomputeWindow(
       history,
       flows,
       account.activities === null ? null : account.transactionsThrough,
+      unclear,
     );
-    // Only days inside the window are rewritten. A catch-up after a long
-    // disconnect keeps its flat days out of history that is already settled.
     rowsByAccount.set(
       account.id,
-      rows.filter((r) => r.date >= windowStart),
+      rows.filter((r) =>
+        account.activities === null
+          ? // Without transactions a deposit cannot be told from a gain, so
+            // only today is written, marked partial, and settled days that
+            // were worked out with transactions are left as they are.
+            usable && r.date === today
+          : // Only days inside the window are rewritten. A catch-up after a
+            // long disconnect keeps its flat days out of settled history.
+            r.date >= windowStart,
+      ),
     );
   }
 
@@ -169,9 +187,7 @@ export function planSync(input: SyncInput): SyncPlan {
 
   let facts: StoredFacts | null = null;
   let freeze: SyncPlan["freeze"] = null;
-  if (storedFacts && storedFacts.quarter !== quarter.key) {
-    freeze = { quarter: storedFacts.quarter, facts: storedFacts.facts };
-  }
+  const turned = storedFacts !== null && storedFacts.quarter !== quarter.key;
   if (readable) {
     const activities = counted.flatMap((a) => a.activities ?? []);
     const positions = counted.flatMap((a) => a.positions ?? []);
@@ -181,10 +197,24 @@ export function planSync(input: SyncInput): SyncPlan {
         ? // A holding first seen mid-quarter is measured from when it appeared.
           { ...prices, ...storedFacts.startPrices }
         : prices;
+    // How far back each account's history reaches, per symbol it holds.
+    const reach: Record<string, string> = {};
+    for (const a of counted) {
+      let earliest = today;
+      for (const act of a.activities ?? []) {
+        if (act.date < earliest) earliest = act.date;
+      }
+      for (const p of a.positions ?? []) {
+        if (!(p.symbol in reach) || earliest < reach[p.symbol]) {
+          reach[p.symbol] = earliest;
+        }
+      }
+    }
     const firstSeen = firstSeenDays(
       positions,
-      storedFacts?.firstSeen ?? {},
+      storedFacts ? storedFacts.firstSeen : null,
       today,
+      reach,
     );
     facts = {
       facts: buildFacts({
@@ -200,33 +230,65 @@ export function planSync(input: SyncInput): SyncPlan {
     };
   }
 
-  const badges = facts
-    ? badgeStatuses(facts.facts, quarter, today)
-        .filter((b) => b.earned)
-        .map((b) => ({
-          key: b.key,
-          quarter: quarter.key,
-          earnedOn: clampDay(b.earnedOn ?? today, quarter.start, today),
-        }))
-    : [];
+  const held = new Set(input.heldBadges ?? []);
+  const badges: SyncPlan["badges"] = [];
+  const award = (
+    habits: HabitFacts,
+    of: { key: string; start: string; end: string },
+    asOf: string,
+  ) => {
+    const last = asOf < of.end ? asOf : of.end;
+    for (const b of badgeStatuses(habits, quarterOf(of.start), asOf)) {
+      if (!b.earned) continue;
+      // One Year Hold is earned once, not again every quarter it stays true.
+      if (b.key === "one_year_hold" && held.has(b.key)) continue;
+      held.add(b.key);
+      badges.push({
+        key: b.key,
+        quarter: of.key,
+        earnedOn: clampDay(b.earnedOn ?? last, of.start, last),
+      });
+    }
+  };
 
-  // A counted account that has dropped pauses the person's rank, from the
-  // last day it synced, until it is reconnected or left out of leagues.
-  const dropped = [
-    ...fetched
-      .filter((a) => !a.connected && isCounted(a))
-      .map((a) => stored.get(a.id)?.lastSyncedOn ?? today),
-    ...storedAccounts
-      .filter((a) => a.counted && !fetched.some((f) => f.id === a.id))
-      .map((a) => a.lastSyncedOn ?? today),
-  ].sort();
+  if (turned && storedFacts) {
+    // The quarter that just ended is frozen for its Wrapped. Buys and
+    // dividends from its last days often arrive after it closes, so its
+    // dates are taken from this sync where there is one. Its holdings stay
+    // as they were last seen inside the quarter.
+    const before = previousQuarter(quarter);
+    const closing = storedFacts.quarter === before.key ? before : null;
+    const within = (d: string) => closing === null || d <= closing.end;
+    const frozen: HabitFacts =
+      facts && closing
+        ? {
+            ...storedFacts.facts,
+            buyDates: facts.facts.buyDates.filter(within),
+            buyMonths: facts.facts.buyMonths.filter((m) => m <= closing.end.slice(0, 7)),
+            dividendDates: facts.facts.dividendDates.filter(within),
+          }
+        : storedFacts.facts;
+    freeze = { quarter: storedFacts.quarter, facts: frozen };
+    if (closing) award(frozen, closing, closing.end);
+  }
+  if (facts) award(facts.facts, quarter, today);
+
+  // A counted account whose connection has dropped pauses the person's
+  // rank, from the last day it synced, until it is reconnected or left out
+  // of leagues. An account that is no longer listed at all was removed by
+  // its owner, so it stops counting instead of pausing them for good.
+  const listed = new Set(input.listedIds ?? fetched.map((f) => f.id));
+  const dropped = fetched
+    .filter((a) => !a.connected && isCounted(a))
+    .map((a) => stored.get(a.id)?.lastSyncedOn ?? today)
+    .sort();
   const pausedSince =
     dropped.length === 0 ? null : (input.pausedSince ?? dropped[0]);
 
   return {
     accounts,
     goneAccountIds: storedAccounts
-      .filter((a) => !fetched.some((f) => f.id === a.id))
+      .filter((a) => !listed.has(a.id))
       .map((a) => a.id),
     snapshots,
     returns,

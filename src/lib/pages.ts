@@ -191,7 +191,7 @@ export function leagueFeed(
 
   // Overtakes, day by day. Only those that involve the viewer or first place.
   const lookback = Math.min(21, daysInclusive(quarter.start, today) - 1);
-  let later = standingsAsOf(league.members, quarter, today);
+  let later = standingsAsOf(league.members, quarter, today, today);
   for (let i = 0; i < lookback; i++) {
     const day = addDays(today, -i);
     const earlier = standingsAsOf(league.members, quarter, addDays(day, -1));
@@ -582,7 +582,10 @@ export function profilePage(
     userId,
     name: isSelf && player.name === "You" ? "You" : player.name,
     isSelf,
-    style: styleLabel(player.facts, today),
+    // The label is drawn from habits, so it follows the habits switch.
+    style: see("showBadges")
+      ? styleLabel(player.facts, today)
+      : "Long-Term Investor",
     sinceLabel: quarterLabel(quarterOf(player.since).key),
     leagueId: league.id,
     leagueName: league.name,
@@ -600,7 +603,9 @@ export function profilePage(
         ? { best: bestH, worst: worstHolding(player.facts) }
         : null,
     badges: see("showBadges") ? badgeTiles(player, today) : null,
-    badgeCount: new Set(player.earned.map((e) => e.key)).size,
+    badgeCount: see("showBadges")
+      ? new Set(player.earned.map((e) => e.key)).size
+      : 0,
     accounts: isSelf ? player.accounts : null,
     privacy: isSelf ? player.privacy : null,
     paused,

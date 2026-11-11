@@ -89,22 +89,23 @@ async function loadPlayers(
         .where(inArray(quarterSnapshots.userId, ids)),
       db.select().from(badges).where(inArray(badges.userId, ids)),
     ]);
-  const counted = accountRows.filter((a) => a.counted);
-  const returnRows =
-    counted.length === 0
-      ? []
-      : await db
-          .select()
-          .from(dailyReturns)
-          .where(
-            and(
-              inArray(
-                dailyReturns.accountId,
-                counted.map((a) => a.id),
-              ),
-              gte(dailyReturns.date, historyStart(day)),
-            ),
-          );
+  // Matched through a subquery so the statement stays small however many
+  // accounts the members have between them.
+  const returnRows = await db
+    .select()
+    .from(dailyReturns)
+    .where(
+      and(
+        inArray(
+          dailyReturns.accountId,
+          db
+            .select({ id: accounts.id })
+            .from(accounts)
+            .where(and(inArray(accounts.userId, ids), eq(accounts.counted, true))),
+        ),
+        gte(dailyReturns.date, historyStart(day)),
+      ),
+    );
 
   return people.map((person) => {
     const mine = accountRows.filter((a) => a.userId === person.id);
@@ -133,7 +134,7 @@ async function loadPlayers(
       joinedOn: joined.get(person.id) ?? created,
       rows,
       pausedSince: person.pausedSince ?? undefined,
-      since: rows[0]?.date ?? created,
+      since: created,
       facts: factRows.find((f) => f.userId === person.id)?.facts ?? EMPTY_FACTS,
       snapshots,
       earned: badgeRows

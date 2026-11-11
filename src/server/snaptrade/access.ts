@@ -84,7 +84,17 @@ async function refresh(
     await store.release();
     throw error;
   }
-  await store.save(tokens);
+  // The old refresh token is spent, so this pair is the only one that works.
+  // A save that fails is tried again before giving up.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await store.save(tokens);
+      break;
+    } catch (error) {
+      if (attempt >= 3) throw error;
+      await options.sleep(150 * attempt);
+    }
+  }
   return {
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken,

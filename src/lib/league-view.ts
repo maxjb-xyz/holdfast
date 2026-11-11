@@ -51,11 +51,34 @@ export type LeagueView = {
   rows: LeagueRow[];
 };
 
-/** The ranking as it stood at the end of a given day. */
+/**
+ * The last day a member is scored through. Today's numbers arrive with the
+ * evening sync, so until a member has today's row they are scored through
+ * yesterday. A day that is merely not in yet is not a missing day.
+ */
+export function scoredThrough(
+  member: LeagueMember,
+  asOf: string,
+  liveDay?: string,
+): string {
+  if (member.pausedSince !== undefined && member.pausedSince < asOf) {
+    return member.pausedSince;
+  }
+  if (asOf === liveDay && !member.rows.some((r) => r.date === asOf)) {
+    return addDays(asOf, -1);
+  }
+  return asOf;
+}
+
+/**
+ * The ranking as it stood at the end of a given day. Pass `liveDay` when
+ * `asOf` may be today, whose rows may not have arrived yet.
+ */
 export function standingsAsOf(
   members: readonly LeagueMember[],
   quarter: Quarter,
   asOf: string,
+  liveDay?: string,
 ) {
   return rankStandings(
     members
@@ -70,7 +93,7 @@ export function standingsAsOf(
             rows: m.rows,
             quarter,
             joinedOn: m.joinedOn,
-            asOf: paused ? (m.pausedSince as string) : asOf,
+            asOf: scoredThrough(m, asOf, liveDay),
           }),
         };
       }),
@@ -86,7 +109,9 @@ export function buildLeagueView(input: {
   const asOf = input.asOf < quarter.end ? input.asOf : quarter.end;
   const byId = new Map(members.map((m) => [m.userId, m]));
 
-  const standings = standingsAsOf(members, quarter, asOf);
+  // Only a quarter still in progress has a day whose rows may be pending.
+  const liveDay = input.asOf <= quarter.end ? input.asOf : undefined;
+  const standings = standingsAsOf(members, quarter, asOf, liveDay);
   const weekAgo = addDays(asOf, -7);
   const moves =
     weekAgo >= quarter.start
@@ -96,7 +121,7 @@ export function buildLeagueView(input: {
   const rows = standings.map<LeagueRow>((s) => {
     const member = byId.get(s.userId) as LeagueMember;
     const from = firstScoredDate(quarter, member.joinedOn);
-    const to = s.paused ? (member.pausedSince as string) : asOf;
+    const to = scoredThrough(member, asOf, liveDay);
     const weekFrom = addDays(to, -6) > from ? addDays(to, -6) : from;
     return {
       userId: s.userId,

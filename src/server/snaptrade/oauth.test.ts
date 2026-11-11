@@ -100,6 +100,10 @@ describe("token requests", () => {
       expect(failure).toBeInstanceOf(Error);
       expect(failure).not.toBeInstanceOf(GrantRejected);
     }
+    const page = (async () => new Response("<html>Bad Request</html>", { status: 400 })) as unknown as typeof fetch;
+    const notJson = await refreshTokens(client, "old", page).catch((e: unknown) => e);
+    expect(notJson).toBeInstanceOf(Error);
+    expect(notJson).not.toBeInstanceOf(GrantRejected);
     const down = (async () => new Response("oops", { status: 503 })) as unknown as typeof fetch;
     const error = await refreshTokens(client, "old", down).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(Error);
