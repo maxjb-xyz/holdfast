@@ -1,0 +1,6 @@
+# Copy to .dev.vars for local dev. In production set each with `npx wrangler secret put NAME`.
+APP_URL=http://localhost:3000
+SNAPTRADE_CLIENT_ID=
+SNAPTRADE_CLIENT_SECRET=
+# 32 random bytes, base64. Generate with: openssl rand -base64 32
+TOKEN_ENCRYPTION_KEY=
