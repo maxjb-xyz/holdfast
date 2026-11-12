@@ -4,14 +4,29 @@ export const LEAGUE_NAME_MAX = 40;
 
 export const DISPLAY_NAME_MAX = 40;
 
+/**
+ * Looks a query-string key up in a table of fixed messages. Only the table's
+ * own keys count, so "__proto__" and the like find nothing.
+ */
+export function pickNotice(
+  table: Readonly<Record<string, string>>,
+  key: unknown,
+): string | undefined {
+  return typeof key === "string" && Object.hasOwn(table, key)
+    ? table[key]
+    : undefined;
+}
+
 function cleanName(raw: string, max: number): string | null {
   const name = raw
-    .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff<>]/g, " ")
+    .replace(
+      /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff<>]/g,
+      " ",
+    )
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, max)
     .trim();
-  return name.length > 0 ? name : null;
+  const cut = Array.from(name).slice(0, max).join("").trim();
+  return cut.length > 0 ? cut : null;
 }
 
 /** Trims a league name and strips control characters and angle brackets. */

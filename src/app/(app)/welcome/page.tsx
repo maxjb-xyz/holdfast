@@ -1,3 +1,4 @@
+import { pickNotice } from "@/lib/inputs";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -31,7 +32,7 @@ export default async function WelcomeRoute({
 }) {
   const viewer = await requireViewer();
   if (viewer.kind !== "user") redirect("/league");
-  const notice = NOTICES[(await searchParams).notice ?? ""];
+  const notice = pickNotice(NOTICES, (await searchParams).notice);
   const day = today();
   const quarter = quarterOf(day);
   const accounts = (await myAccounts(viewer)).map(accountLine);

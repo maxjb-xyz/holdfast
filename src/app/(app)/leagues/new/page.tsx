@@ -1,3 +1,4 @@
+import { pickNotice } from "@/lib/inputs";
 import type { Metadata } from "next";
 import { Fact, Header, SectionHead, TabBar } from "@/components/chrome";
 import { Icon } from "@/components/icons";
@@ -28,7 +29,7 @@ export default async function NewLeagueRoute({
   searchParams: Promise<{ notice?: string }>;
 }) {
   const viewer = await requireViewer();
-  const notice = NOTICES[(await searchParams).notice ?? ""];
+  const notice = pickNotice(NOTICES, (await searchParams).notice);
   const day = today();
   const quarter = quarterOf(day);
   const header = (

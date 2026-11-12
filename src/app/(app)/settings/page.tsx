@@ -1,3 +1,4 @@
+import { pickNotice } from "@/lib/inputs";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AccountRows } from "@/components/account-rows";
@@ -52,7 +53,7 @@ export default async function SettingsRoute({
   searchParams: Promise<{ notice?: string }>;
 }) {
   const viewer = await requireViewer();
-  const notice = NOTICES[(await searchParams).notice ?? ""];
+  const notice = pickNotice(NOTICES, (await searchParams).notice);
   const isUser = viewer.kind === "user";
   const user = isUser ? await currentUser() : null;
   const prefs = isUser ? null : await readDemoPrefs();

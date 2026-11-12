@@ -351,7 +351,7 @@ export function PreviewChart({
   const y = (v: number) =>
     f.top + ((floor - f.top) * (domain.top - v)) / (domain.top - domain.bottom);
   const tx = Math.min(x(today), f.width - 250);
-  const scale = tx / x(today);
+  const scale = x(today) > 0 ? tx / x(today) : 1;
   const sx = (date: string) => x(date) * scale;
   const value = has ? series[series.length - 1].value : 0;
   const shown = Math.min(places, 3);

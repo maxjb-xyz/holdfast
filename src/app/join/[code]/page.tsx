@@ -54,8 +54,8 @@ export default async function JoinRoute({
               This invite does not lead anywhere.
             </h1>
             <p className="m-0 max-w-[46ch] text-[17px] text-sub">
-              The link may be mistyped, or the league may have been removed.
-              Ask your friend for a fresh one.
+              The link may be mistyped, or the league may have been removed. Ask
+              your friend for a fresh one.
             </p>
             <Link
               href={viewer ? "/leagues" : "/"}
@@ -79,21 +79,27 @@ export default async function JoinRoute({
               Nobody sees a dollar amount.
             </p>
             {notice === "too-many" && (
-              <p role="status" className="m-0 border-t border-b border-rule py-3 text-sub">
+              <p
+                role="status"
+                className="m-0 border-t border-b border-rule py-3 text-sub"
+              >
                 You can be in up to {MAX_LEAGUES_PER_PERSON} leagues at a time.
                 Leave one to join this one.
               </p>
             )}
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
               {invite.alreadyIn ? (
-                <Link href={`/league?league=${invite.leagueId}`} className={solid}>
+                <Link
+                  href={`/league?league=${invite.leagueId}`}
+                  className={solid}
+                >
                   Open the league
                   <Icon name="arrow" size={16} stroke={1.8} />
                 </Link>
               ) : full ? (
                 <p className="m-0 border-t border-b border-rule py-3 text-sub">
-                  This league already has {MAX_LEAGUE_MEMBERS} members, which
-                  is the most a league can hold.
+                  This league already has {MAX_LEAGUE_MEMBERS} members, which is
+                  the most a league can hold.
                 </p>
               ) : user ? (
                 <form action={joinLeagueAction}>

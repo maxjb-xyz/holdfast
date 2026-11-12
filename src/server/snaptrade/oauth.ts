@@ -16,7 +16,11 @@ export const JWKS_URL = "https://api.snaptrade.com/.well-known/jwks.json";
 /** Read-only. Holdfast never asks for `trade`. */
 export const SCOPES = "openid profile read";
 
-export type Client = { clientId: string; clientSecret: string; redirectUri: string };
+export type Client = {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+};
 export type Fetch = typeof fetch;
 
 export type TokenSet = {
@@ -107,7 +111,10 @@ async function tokenRequest(
     throw new Error(`Token endpoint answered ${response.status}`);
   }
   const json = (await response.json()) as Record<string, unknown>;
-  if (typeof json.access_token !== "string" || typeof json.refresh_token !== "string") {
+  if (
+    typeof json.access_token !== "string" ||
+    typeof json.refresh_token !== "string"
+  ) {
     throw new Error("Token response is missing tokens");
   }
   return {
@@ -182,15 +189,21 @@ async function signingKeys(fetchImpl: Fetch, force: boolean): Promise<Jwk[]> {
   if (!force && jwksCache && Date.now() - jwksCache.fetchedAt < 3_600_000) {
     return jwksCache.keys;
   }
-  const response = await fetchImpl(JWKS_URL, { headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error(`JWKS endpoint answered ${response.status}`);
+  const response = await fetchImpl(JWKS_URL, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok)
+    throw new Error(`JWKS endpoint answered ${response.status}`);
   const json = (await response.json()) as { keys?: Jwk[] };
   jwksCache = { keys: json.keys ?? [], fetchedAt: Date.now() };
   return jwksCache.keys;
 }
 
 function decodeSegment(segment: string): Record<string, unknown> {
-  return JSON.parse(new TextDecoder().decode(fromBase64(segment))) as Record<string, unknown>;
+  return JSON.parse(new TextDecoder().decode(fromBase64(segment))) as Record<
+    string,
+    unknown
+  >;
 }
 
 /**
@@ -207,11 +220,15 @@ export async function verifyIdToken(
   if (parts.length !== 3) throw new Error("ID token is malformed");
   const header = decodeSegment(parts[0]);
   const claims = decodeSegment(parts[1]);
-  if (header.alg !== "RS256") throw new Error("ID token uses an unexpected algorithm");
+  if (header.alg !== "RS256")
+    throw new Error("ID token uses an unexpected algorithm");
 
-  const find = (keys: Jwk[]) => keys.find((k) => k.kid === header.kid && k.kty === "RSA");
+  const find = (keys: Jwk[]) =>
+    keys.find((k) => k.kid === header.kid && k.kty === "RSA");
   // An unknown key id may mean SnapTrade rotated keys: fetch them again once.
-  const jwk = find(await signingKeys(fetchImpl, false)) ?? find(await signingKeys(fetchImpl, true));
+  const jwk =
+    find(await signingKeys(fetchImpl, false)) ??
+    find(await signingKeys(fetchImpl, true));
   if (!jwk) throw new Error("ID token was signed with an unknown key");
 
   const key = await crypto.subtle.importKey(
@@ -232,12 +249,21 @@ export async function verifyIdToken(
   const now = Math.floor((expected.now ?? Date.now()) / 1000);
   const audience = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
   if (claims.iss !== ISSUER) throw new Error("ID token has the wrong issuer");
-  if (!audience.includes(expected.clientId)) throw new Error("ID token is for another app");
-  if (typeof claims.exp !== "number" || claims.exp <= now - 60) throw new Error("ID token has expired");
-  if (typeof claims.iat !== "number" || claims.iat > now + 300 || claims.iat < now - 3600) {
+  if (!audience.includes(expected.clientId))
+    throw new Error("ID token is for another app");
+  if (typeof claims.exp !== "number" || claims.exp <= now - 60)
+    throw new Error("ID token has expired");
+  if (
+    typeof claims.iat !== "number" ||
+    claims.iat > now + 300 ||
+    claims.iat < now - 3600
+  ) {
     throw new Error("ID token has an implausible issue time");
   }
-  if (typeof claims.nonce !== "string" || !safeEqual(claims.nonce, expected.nonce)) {
+  if (
+    typeof claims.nonce !== "string" ||
+    !safeEqual(claims.nonce, expected.nonce)
+  ) {
     throw new Error("ID token nonce does not match this sign-in");
   }
   if (typeof claims.sub !== "string" || claims.sub.length === 0) {
@@ -245,7 +271,10 @@ export async function verifyIdToken(
   }
   return {
     sub: claims.sub,
-    name: typeof claims.name === "string" && claims.name.trim() ? claims.name.trim() : null,
+    name:
+      typeof claims.name === "string" && claims.name.trim()
+        ? claims.name.trim()
+        : null,
   };
 }
 

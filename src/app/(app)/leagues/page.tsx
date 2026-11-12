@@ -1,3 +1,4 @@
+import { pickNotice } from "@/lib/inputs";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Header, SectionHead, TabBar } from "@/components/chrome";
@@ -123,7 +124,7 @@ export default async function LeaguesRoute({
   searchParams: Promise<{ notice?: string }>;
 }) {
   const viewer = await requireViewer();
-  const notice = NOTICES[(await searchParams).notice ?? ""];
+  const notice = pickNotice(NOTICES, (await searchParams).notice);
   const day = today();
   const quarter = quarterOf(day);
   const week = Math.min(13, Math.ceil(daysInclusive(quarter.start, day) / 7));

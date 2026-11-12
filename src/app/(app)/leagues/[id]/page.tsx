@@ -1,3 +1,4 @@
+import { pickNotice } from "@/lib/inputs";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -40,7 +41,7 @@ const NOTICES: Record<string, string> = {
   renamed: "The league has its new name.",
   reset: "The invite link is new. The old one no longer works.",
   removed:
-    "They are out of the league. Their own scores and badges stay with them.",
+    "They are out of the league and the invite link is new, so the old one will not let them back in.",
   "handed-over": "The league has a new owner.",
   name: "Give the league a name first.",
   "not-owner": "Only the league's owner can do that.",
@@ -67,7 +68,7 @@ export default async function ManageLeagueRoute({
     loadLeague(viewer, id),
   ]);
   if (!admin || !league) notFound();
-  const notice = NOTICES[(await searchParams).notice ?? ""];
+  const notice = pickNotice(NOTICES, (await searchParams).notice);
   const day = today();
   const quarter = quarterOf(day);
   const page = leaguePage(league, viewer.id, day);

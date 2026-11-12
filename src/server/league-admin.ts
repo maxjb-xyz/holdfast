@@ -354,9 +354,17 @@ export type ManageOutcome =
   | { ok: true }
   | { ok: false; reason: "name" | "not-owner" | "not-member" };
 
-/** Every owner action names the owner in its own WHERE, so none can race a handover. */
+/**
+ * Every owner action names the owner in its own WHERE, so none can race a
+ * handover. The owner also has to still be a member, so someone who left
+ * keeps no rights even if the handover after their leaving failed.
+ */
 const ownedBy = (leagueId: string, ownerId: string) =>
-  and(eq(t.leagues.id, leagueId), eq(t.leagues.ownerId, ownerId));
+  and(
+    eq(t.leagues.id, leagueId),
+    eq(t.leagues.ownerId, ownerId),
+    sql`exists (select 1 from league_members m where m.league_id = ${leagueId} and m.user_id = ${ownerId})`,
+  );
 
 export async function renameLeague(
   ownerId: string,
@@ -388,7 +396,10 @@ export async function resetInviteCode(
   return changed.length > 0 ? { ok: true } : { ok: false, reason: "not-owner" };
 }
 
-/** The owner removes someone else. Owners leave through leaveLeague. */
+/**
+ * The owner removes someone else. Owners leave through leaveLeague. The
+ * invite link changes too, since the person removed has seen the old one.
+ */
 export async function removeMember(
   ownerId: string,
   leagueId: string,
@@ -406,7 +417,13 @@ export async function removeMember(
       ),
     )
     .returning({ userId: t.leagueMembers.userId });
-  if (removed.length > 0) return { ok: true };
+  if (removed.length > 0) {
+    await db
+      .update(t.leagues)
+      .set({ inviteCode: randomToken(12) })
+      .where(ownedBy(leagueId, ownerId));
+    return { ok: true };
+  }
   const [owned] = await db
     .select({ id: t.leagues.id })
     .from(t.leagues)

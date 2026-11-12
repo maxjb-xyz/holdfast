@@ -29,7 +29,16 @@ export async function setAccountCounted(
     db
       .update(accounts)
       .set({ counted: on })
-      .where(and(eq(accounts.id, accountId), eq(accounts.userId, userId))),
+      .where(
+        and(
+          eq(accounts.id, accountId),
+          eq(accounts.userId, userId),
+          // The last counted account stays counted, whatever the page showed.
+          on
+            ? undefined
+            : sql`exists (select 1 from accounts o where o.user_id = ${userId} and o.counted = 1 and o.id <> ${accountId})`,
+        ),
+      ),
     // The pause follows the choice at once: counting a dropped account
     // pauses the rank, and leaving the last dropped one out lifts the pause,
     // as long as the SnapTrade connection itself still works.

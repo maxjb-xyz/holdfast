@@ -24,6 +24,7 @@ export async function leave(): Promise<void> {
   const jar = await cookies();
   jar.delete(DEMO_COOKIE);
   jar.delete(DEMO_PREFS_COOKIE);
+  jar.delete(WELCOME_COOKIE);
   await endSession();
   redirect("/");
 }
@@ -156,6 +157,7 @@ export async function deleteEverythingAction(): Promise<void> {
   }
   jar.delete(DEMO_COOKIE);
   jar.delete(DEMO_PREFS_COOKIE);
+  jar.delete(WELCOME_COOKIE);
   redirect(revoked ? "/?notice=deleted" : "/?notice=deleted-check");
 }
 
@@ -257,6 +259,8 @@ export async function syncNowAction(formData: FormData): Promise<void> {
 
 /** Skips the rest of the first run and opens the demo league. */
 export async function skipWelcomeAction(): Promise<void> {
+  const viewer = await getViewer();
+  if (viewer?.kind !== "user") redirect("/");
   (await cookies()).set(WELCOME_COOKIE, "1", {
     httpOnly: true,
     secure: true,
