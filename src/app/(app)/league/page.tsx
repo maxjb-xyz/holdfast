@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { BigReturn, Fact, Header, TabBar } from "@/components/chrome";
 import { Icon, type IconName } from "@/components/icons";
 import { LeagueChart, MiniChart } from "@/components/league-chart";
@@ -13,6 +13,7 @@ import {
 } from "@/lib/pages";
 import { addDays } from "@/lib/quarters";
 import { loadLeague } from "@/server/leagues";
+import { needsWelcome } from "@/server/me";
 import { requireViewer, today } from "@/server/viewer";
 import { currentUser } from "@/server/session";
 import { syncStatus } from "@/server/status";
@@ -218,6 +219,9 @@ export default async function LeagueRoute({
 }) {
   const params = await searchParams;
   const viewer = await requireViewer();
+  // Someone new, with no league yet, starts with the first run instead of
+  // being dropped into the demo league.
+  if (!params.league && (await needsWelcome(viewer))) redirect("/welcome");
   const league = await loadLeague(viewer, params.league);
   // A dropped link is flagged at once, a day before the rank shows as paused.
   const needsReconnect =
@@ -256,9 +260,15 @@ export default async function LeagueRoute({
             <div className="rise flex flex-col gap-3">
               <span className="label flex items-center gap-2">
                 {kind} · {members}
-                {viewer.kind === "user" && (
-                  <Link href="/leagues" className="hover-text text-grey">
-                    · Switch
+                <Link href="/leagues" className="hover-text text-grey">
+                  · Switch
+                </Link>
+                {!page.league.isDemo && (
+                  <Link
+                    href={`/leagues/${page.league.id}`}
+                    className="hover-text text-grey"
+                  >
+                    · {league.ownerId === viewer.id ? "Manage" : "Details"}
                   </Link>
                 )}
               </span>

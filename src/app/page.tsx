@@ -1,3 +1,4 @@
+import { pickNotice } from "@/lib/inputs";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Wordmark } from "@/components/chrome";
@@ -45,7 +46,7 @@ export default async function SignIn({
   searchParams: Promise<{ notice?: string }>;
 }) {
   if (await getViewer()) redirect("/league");
-  const notice = NOTICES[(await searchParams).notice ?? ""];
+  const notice = pickNotice(NOTICES, (await searchParams).notice);
   const day = today();
   const page = leaguePage(demoLeague(day), DEMO_VIEWER_ID, day);
   const you = page.you?.score.value ?? null;

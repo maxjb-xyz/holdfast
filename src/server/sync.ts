@@ -162,36 +162,39 @@ export async function syncUser(
 
   const db = await getDb();
   const ids = fetched.map((a) => a.id);
-  const [owned, clashing, storedFacts, user, heldBadges, snapshots] = await Promise.all([
-    db.select().from(t.accounts).where(eq(t.accounts.userId, userId)),
-    ids.length === 0
-      ? []
-      : db
-          .select({ id: t.accounts.id })
-          .from(t.accounts)
-          .where(and(inArray(t.accounts.id, ids), ne(t.accounts.userId, userId))),
-    db.select().from(t.userFacts).where(eq(t.userFacts.userId, userId)),
-    db
-      .select({ pausedSince: t.users.pausedSince })
-      .from(t.users)
-      .where(eq(t.users.id, userId)),
-    db
-      .select({ key: t.badges.badgeKey })
-      .from(t.badges)
-      .where(eq(t.badges.userId, userId)),
-    db
-      .select()
-      .from(t.balanceSnapshots)
-      .where(
-        inArray(
-          t.balanceSnapshots.accountId,
-          db
+  const [owned, clashing, storedFacts, user, heldBadges, snapshots] =
+    await Promise.all([
+      db.select().from(t.accounts).where(eq(t.accounts.userId, userId)),
+      ids.length === 0
+        ? []
+        : db
             .select({ id: t.accounts.id })
             .from(t.accounts)
-            .where(eq(t.accounts.userId, userId)),
+            .where(
+              and(inArray(t.accounts.id, ids), ne(t.accounts.userId, userId)),
+            ),
+      db.select().from(t.userFacts).where(eq(t.userFacts.userId, userId)),
+      db
+        .select({ pausedSince: t.users.pausedSince })
+        .from(t.users)
+        .where(eq(t.users.id, userId)),
+      db
+        .select({ key: t.badges.badgeKey })
+        .from(t.badges)
+        .where(eq(t.badges.userId, userId)),
+      db
+        .select()
+        .from(t.balanceSnapshots)
+        .where(
+          inArray(
+            t.balanceSnapshots.accountId,
+            db
+              .select({ id: t.accounts.id })
+              .from(t.accounts)
+              .where(eq(t.accounts.userId, userId)),
+          ),
         ),
-      ),
-  ]);
+    ]);
   // The person deleted their data while this sync was reading. Write nothing.
   if (user.length === 0) return "busy";
   // An account id that already belongs to someone else is never taken over.

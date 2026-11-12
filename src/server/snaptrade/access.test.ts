@@ -16,11 +16,21 @@ function memoryStore(initial: Partial<StoredTokens> | null = {}) {
   let tokens: StoredTokens | null =
     initial === null
       ? null
-      : { accessToken: "a1", refreshToken: "r1", accessExpiresAt: NOW + 5 * HOUR, status: "active", ...initial };
+      : {
+          accessToken: "a1",
+          refreshToken: "r1",
+          accessExpiresAt: NOW + 5 * HOUR,
+          status: "active",
+          ...initial,
+        };
   const store: TokenStore = {
     load: async () => (tokens ? { ...tokens } : null),
     claimRefresh: async (current) => {
-      if (!tokens || tokens.status !== "active" || tokens.refreshToken !== current.refreshToken) {
+      if (
+        !tokens ||
+        tokens.status !== "active" ||
+        tokens.refreshToken !== current.refreshToken
+      ) {
         log.push("claim-lost");
         return false;
       }
@@ -29,7 +39,12 @@ function memoryStore(initial: Partial<StoredTokens> | null = {}) {
       return true;
     },
     save: async (t: TokenSet) => {
-      tokens = { accessToken: t.accessToken, refreshToken: t.refreshToken, accessExpiresAt: NOW + t.expiresIn * 1000, status: "active" };
+      tokens = {
+        accessToken: t.accessToken,
+        refreshToken: t.refreshToken,
+        accessExpiresAt: NOW + t.expiresIn * 1000,
+        status: "active",
+      };
       log.push(`save:${t.refreshToken}`);
     },
     release: async () => {
@@ -41,13 +56,24 @@ function memoryStore(initial: Partial<StoredTokens> | null = {}) {
       log.push("reconnect");
     },
   };
-  return { store, log, get: () => tokens, set: (t: StoredTokens) => (tokens = t) };
+  return {
+    store,
+    log,
+    get: () => tokens,
+    set: (t: StoredTokens) => (tokens = t),
+  };
 }
 
 let counter = 1;
 const rotate = async (): Promise<TokenSet> => {
   counter++;
-  return { accessToken: `a${counter}`, refreshToken: `r${counter}`, expiresIn: 36000, scope: "read", idToken: null };
+  return {
+    accessToken: `a${counter}`,
+    refreshToken: `r${counter}`,
+    expiresIn: 36000,
+    scope: "read",
+    idToken: null,
+  };
 };
 const opts = { now: () => NOW, sleep: async () => {} };
 
@@ -55,7 +81,12 @@ describe("withAccessToken", () => {
   it("uses the stored token while it is fresh", async () => {
     const m = memoryStore();
     const used: string[] = [];
-    const result = await withAccessToken(m.store, rotate, async (t) => (used.push(t), "ok"), opts);
+    const result = await withAccessToken(
+      m.store,
+      rotate,
+      async (t) => (used.push(t), "ok"),
+      opts,
+    );
     expect(result).toBe("ok");
     expect(used).toEqual(["a1"]);
     expect(m.log).toEqual([]);
@@ -64,7 +95,12 @@ describe("withAccessToken", () => {
   it("refreshes ahead of time when the token is about to expire, and saves the rotated pair", async () => {
     const m = memoryStore({ accessExpiresAt: NOW + 60_000 });
     const used: string[] = [];
-    await withAccessToken(m.store, rotate, async (t) => (used.push(t), null), opts);
+    await withAccessToken(
+      m.store,
+      rotate,
+      async (t) => (used.push(t), null),
+      opts,
+    );
     expect(used).toHaveLength(1);
     expect(used[0]).not.toBe("a1");
     expect(m.log[0]).toBe("claim");
@@ -130,14 +166,28 @@ describe("withAccessToken", () => {
 
   it("asks for a reconnect when the refresh token is rejected", async () => {
     const m = memoryStore({ accessExpiresAt: NOW - HOUR });
-    const attempt = withAccessToken(m.store, async () => { throw new GrantRejected("invalid_grant"); }, async () => "never", opts);
+    const attempt = withAccessToken(
+      m.store,
+      async () => {
+        throw new GrantRejected("invalid_grant");
+      },
+      async () => "never",
+      opts,
+    );
     await expect(attempt).rejects.toBeInstanceOf(ReconnectNeeded);
     expect(m.log).toEqual(["claim", "reconnect"]);
   });
 
   it("does not pause anyone over a network failure during refresh", async () => {
     const m = memoryStore({ accessExpiresAt: NOW - HOUR });
-    const attempt = withAccessToken(m.store, async () => { throw new Error("socket hang up"); }, async () => "never", opts);
+    const attempt = withAccessToken(
+      m.store,
+      async () => {
+        throw new Error("socket hang up");
+      },
+      async () => "never",
+      opts,
+    );
     await expect(attempt).rejects.toThrow("socket hang up");
     expect(m.log).toEqual(["claim", "release"]);
     expect(m.get()).toMatchObject({ status: "active", refreshToken: "r1" });
@@ -158,20 +208,48 @@ describe("withAccessToken", () => {
       m.store,
       async (rt) => (spent.push(rt), rotate()),
       async (t) => t,
-      { now: () => NOW, sleep: async () => finishFirst({ accessToken: "aX", refreshToken: "rX", expiresIn: 36000, scope: "", idToken: null }) },
+      {
+        now: () => NOW,
+        sleep: async () =>
+          finishFirst({
+            accessToken: "aX",
+            refreshToken: "rX",
+            expiresIn: 36000,
+            scope: "",
+            idToken: null,
+          }),
+      },
     );
     expect(await Promise.all([first, second])).toEqual(["aX", "aX"]);
     expect(spent).toEqual(["r1"]);
   });
 
   it("refuses straight away when a reconnect is already needed or there are no tokens", async () => {
-    await expect(withAccessToken(memoryStore({ status: "needs_reconnect" }).store, rotate, async () => 1, opts)).rejects.toBeInstanceOf(ReconnectNeeded);
-    await expect(withAccessToken(memoryStore(null).store, rotate, async () => 1, opts)).rejects.toBeInstanceOf(ReconnectNeeded);
+    await expect(
+      withAccessToken(
+        memoryStore({ status: "needs_reconnect" }).store,
+        rotate,
+        async () => 1,
+        opts,
+      ),
+    ).rejects.toBeInstanceOf(ReconnectNeeded);
+    await expect(
+      withAccessToken(memoryStore(null).store, rotate, async () => 1, opts),
+    ).rejects.toBeInstanceOf(ReconnectNeeded);
   });
 
   it("passes other errors through untouched", async () => {
     const m = memoryStore();
-    await expect(withAccessToken(m.store, rotate, async () => { throw new Error("503 from brokerage"); }, opts)).rejects.toThrow("503");
+    await expect(
+      withAccessToken(
+        m.store,
+        rotate,
+        async () => {
+          throw new Error("503 from brokerage");
+        },
+        opts,
+      ),
+    ).rejects.toThrow("503");
     expect(m.log).toEqual([]);
   });
 

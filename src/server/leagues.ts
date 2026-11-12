@@ -101,7 +101,9 @@ async function loadPlayers(
           db
             .select({ id: accounts.id })
             .from(accounts)
-            .where(and(inArray(accounts.userId, ids), eq(accounts.counted, true))),
+            .where(
+              and(inArray(accounts.userId, ids), eq(accounts.counted, true)),
+            ),
         ),
         gte(dailyReturns.date, historyStart(day)),
       ),

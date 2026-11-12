@@ -3,7 +3,9 @@ import { cleanLeagueName, inviteCodeFrom, safeReturnTo } from "./inputs";
 
 describe("cleanLeagueName", () => {
   it("trims and collapses spaces", () => {
-    expect(cleanLeagueName("  Sunday   Compounders ")).toBe("Sunday Compounders");
+    expect(cleanLeagueName("  Sunday   Compounders ")).toBe(
+      "Sunday Compounders",
+    );
   });
   it("rejects empty and invisible names", () => {
     expect(cleanLeagueName("   ")).toBeNull();
@@ -22,8 +24,12 @@ describe("inviteCodeFrom", () => {
     expect(inviteCodeFrom(" abcDEF12_-xy ")).toBe("abcDEF12_-xy");
   });
   it("accepts a whole link, with or without extras", () => {
-    expect(inviteCodeFrom("https://holdfast.example/join/abcDEF12xy")).toBe("abcDEF12xy");
-    expect(inviteCodeFrom("https://holdfast.example/join/abcDEF12xy/?x=1#top")).toBe("abcDEF12xy");
+    expect(inviteCodeFrom("https://holdfast.example/join/abcDEF12xy")).toBe(
+      "abcDEF12xy",
+    );
+    expect(
+      inviteCodeFrom("https://holdfast.example/join/abcDEF12xy/?x=1#top"),
+    ).toBe("abcDEF12xy");
   });
   it("rejects other text", () => {
     expect(inviteCodeFrom("short")).toBeNull();
@@ -52,5 +58,26 @@ describe("safeReturnTo", () => {
     ]) {
       expect(safeReturnTo(bad)).toBeNull();
     }
+  });
+});
+
+describe("cleanDisplayName", () => {
+  it("trims, strips markup characters and caps the length", async () => {
+    const { cleanDisplayName, DISPLAY_NAME_MAX } = await import("./inputs");
+    expect(cleanDisplayName("  Max <b> B.  ")).toBe("Max b B.");
+    expect(cleanDisplayName(" ​ ")).toBeNull();
+    expect(cleanDisplayName("x".repeat(90))?.length).toBe(DISPLAY_NAME_MAX);
+  });
+});
+
+describe("pickNotice", () => {
+  const table = { done: "Done." };
+  it("finds the table's own keys only", async () => {
+    const { pickNotice } = await import("./inputs");
+    expect(pickNotice(table, "done")).toBe("Done.");
+    expect(pickNotice(table, "__proto__")).toBeUndefined();
+    expect(pickNotice(table, "toString")).toBeUndefined();
+    expect(pickNotice(table, ["done"])).toBeUndefined();
+    expect(pickNotice(table, undefined)).toBeUndefined();
   });
 });

@@ -126,12 +126,14 @@ async function settleLeagues(leagueIds: readonly string[]): Promise<void> {
   const db = await getDb();
   const mine = inArray(t.leagues.id, [...leagueIds]);
   await db.batch([
-    db.delete(t.leagues).where(
-      and(
-        mine,
-        sql`not exists (select 1 from league_members m where m.league_id = leagues.id)`,
+    db
+      .delete(t.leagues)
+      .where(
+        and(
+          mine,
+          sql`not exists (select 1 from league_members m where m.league_id = leagues.id)`,
+        ),
       ),
-    ),
     db
       .update(t.leagues)
       .set({
@@ -260,7 +262,10 @@ export async function deleteEverything(
     db.delete(t.users).where(eq(t.users.id, userId)),
   ]);
   await settleLeagues([
-    ...new Set([...memberships.map((m) => m.leagueId), ...owned.map((o) => o.id)]),
+    ...new Set([
+      ...memberships.map((m) => m.leagueId),
+      ...owned.map((o) => o.id),
+    ]),
   ]);
   return revoked;
 }
@@ -300,3 +305,177 @@ export async function myLeagues(userId: string): Promise<MyLeague[]> {
   }));
 }
 
+// ------------------------------------------------------------ managing
+
+export type LeagueAdmin = {
+  id: string;
+  name: string;
+  inviteCode: string;
+  createdOn: string;
+  ownerId: string | null;
+  isOwner: boolean;
+  members: { userId: string; name: string; joinedOn: string }[];
+};
+
+/** What the manage page shows. Null unless the person is a member. */
+export async function leagueAdmin(
+  userId: string,
+  leagueId: string,
+): Promise<LeagueAdmin | null> {
+  const db = await getDb();
+  const [league] = await db
+    .select()
+    .from(t.leagues)
+    .where(eq(t.leagues.id, leagueId));
+  if (!league) return null;
+  const members = await db
+    .select({
+      userId: t.leagueMembers.userId,
+      name: t.users.displayName,
+      joinedOn: t.leagueMembers.joinedOn,
+    })
+    .from(t.leagueMembers)
+    .innerJoin(t.users, eq(t.users.id, t.leagueMembers.userId))
+    .where(eq(t.leagueMembers.leagueId, leagueId))
+    .orderBy(t.leagueMembers.joinedOn, t.leagueMembers.userId);
+  if (!members.some((m) => m.userId === userId)) return null;
+  return {
+    id: league.id,
+    name: league.name,
+    inviteCode: league.inviteCode,
+    createdOn: league.createdOn,
+    ownerId: league.ownerId,
+    isOwner: league.ownerId === userId,
+    members,
+  };
+}
+
+export type ManageOutcome =
+  | { ok: true }
+  | { ok: false; reason: "name" | "not-owner" | "not-member" };
+
+/**
+ * Every owner action names the owner in its own WHERE, so none can race a
+ * handover. The owner also has to still be a member, so someone who left
+ * keeps no rights even if the handover after their leaving failed.
+ */
+const ownedBy = (leagueId: string, ownerId: string) =>
+  and(
+    eq(t.leagues.id, leagueId),
+    eq(t.leagues.ownerId, ownerId),
+    sql`exists (select 1 from league_members m where m.league_id = ${leagueId} and m.user_id = ${ownerId})`,
+  );
+
+export async function renameLeague(
+  ownerId: string,
+  leagueId: string,
+  rawName: string,
+): Promise<ManageOutcome> {
+  const name = cleanLeagueName(rawName);
+  if (!name) return { ok: false, reason: "name" };
+  const db = await getDb();
+  const changed = await db
+    .update(t.leagues)
+    .set({ name })
+    .where(ownedBy(leagueId, ownerId))
+    .returning({ id: t.leagues.id });
+  return changed.length > 0 ? { ok: true } : { ok: false, reason: "not-owner" };
+}
+
+/** Swaps the invite code, so links already sent stop working. */
+export async function resetInviteCode(
+  ownerId: string,
+  leagueId: string,
+): Promise<ManageOutcome> {
+  const db = await getDb();
+  const changed = await db
+    .update(t.leagues)
+    .set({ inviteCode: randomToken(12) })
+    .where(ownedBy(leagueId, ownerId))
+    .returning({ id: t.leagues.id });
+  return changed.length > 0 ? { ok: true } : { ok: false, reason: "not-owner" };
+}
+
+/**
+ * The owner removes someone else. Owners leave through leaveLeague. The
+ * invite link changes too, since the person removed has seen the old one.
+ */
+export async function removeMember(
+  ownerId: string,
+  leagueId: string,
+  memberId: string,
+): Promise<ManageOutcome> {
+  if (memberId === ownerId) return { ok: false, reason: "not-member" };
+  const db = await getDb();
+  const removed = await db
+    .delete(t.leagueMembers)
+    .where(
+      and(
+        eq(t.leagueMembers.leagueId, leagueId),
+        eq(t.leagueMembers.userId, memberId),
+        sql`exists (select 1 from leagues l where l.id = ${leagueId} and l.owner_id = ${ownerId})`,
+      ),
+    )
+    .returning({ userId: t.leagueMembers.userId });
+  if (removed.length > 0) {
+    await db
+      .update(t.leagues)
+      .set({ inviteCode: randomToken(12) })
+      .where(ownedBy(leagueId, ownerId));
+    return { ok: true };
+  }
+  const [owned] = await db
+    .select({ id: t.leagues.id })
+    .from(t.leagues)
+    .where(ownedBy(leagueId, ownerId));
+  return { ok: false, reason: owned ? "not-member" : "not-owner" };
+}
+
+/** Hands the league to another current member. */
+export async function transferOwnership(
+  ownerId: string,
+  leagueId: string,
+  toUserId: string,
+): Promise<ManageOutcome> {
+  if (toUserId === ownerId) return { ok: false, reason: "not-member" };
+  const db = await getDb();
+  const changed = await db
+    .update(t.leagues)
+    .set({ ownerId: toUserId })
+    .where(
+      and(
+        ownedBy(leagueId, ownerId),
+        sql`exists (select 1 from league_members m where m.league_id = ${leagueId} and m.user_id = ${toUserId})`,
+      ),
+    )
+    .returning({ id: t.leagues.id });
+  if (changed.length > 0) return { ok: true };
+  const [owned] = await db
+    .select({ id: t.leagues.id })
+    .from(t.leagues)
+    .where(ownedBy(leagueId, ownerId));
+  return { ok: false, reason: owned ? "not-member" : "not-owner" };
+}
+
+/** Removes the league for everyone. Members keep their own scores and badges. */
+export async function deleteLeague(
+  ownerId: string,
+  leagueId: string,
+): Promise<ManageOutcome> {
+  const db = await getDb();
+  const [, gone] = await db.batch([
+    db
+      .delete(t.leagueMembers)
+      .where(
+        and(
+          eq(t.leagueMembers.leagueId, leagueId),
+          sql`exists (select 1 from leagues l where l.id = ${leagueId} and l.owner_id = ${ownerId})`,
+        ),
+      ),
+    db
+      .delete(t.leagues)
+      .where(ownedBy(leagueId, ownerId))
+      .returning({ id: t.leagues.id }),
+  ]);
+  return gone.length > 0 ? { ok: true } : { ok: false, reason: "not-owner" };
+}

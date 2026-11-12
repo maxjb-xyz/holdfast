@@ -20,7 +20,10 @@ export async function POST(request: NextRequest) {
   const userId = request.nextUrl.searchParams.get("user");
   if (userId) {
     try {
-      return NextResponse.json({ ok: true, result: await syncUser(userId, config) });
+      return NextResponse.json({
+        ok: true,
+        result: await syncUser(userId, config),
+      });
     } catch (error) {
       console.error("sync failed", userId, error);
       return NextResponse.json({ ok: false }, { status: 500 });
