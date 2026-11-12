@@ -23,6 +23,8 @@ export type FetchedAccount = {
   id: string;
   label: string;
   isPaper: boolean;
+  /** True when the brokerage reports the account as closed or archived. */
+  closed?: boolean;
   /** False when the brokerage connection behind the account is disabled. */
   connected: boolean;
   balance: number | null;
@@ -79,8 +81,9 @@ export type SyncPlan = {
    */
   goneAccountIds: string[];
   /**
-   * Stored accounts SnapTrade no longer lists that never synced a balance.
-   * They hold nothing worth keeping, so they are removed outright.
+   * Stored accounts that never synced a balance and were not read this
+   * time: no longer listed, not an investment account, or closed. They hold
+   * nothing worth keeping, so they are removed outright.
    */
   forgetAccountIds: string[];
   snapshots: { accountId: string; date: string; balance: number }[];
@@ -96,8 +99,14 @@ export type SyncPlan = {
 };
 
 export function planSync(input: SyncInput): SyncPlan {
-  const { today, fetched, storedAccounts, storedFacts } = input;
+  const { today, storedAccounts, storedFacts } = input;
   const stored = new Map(storedAccounts.map((a) => [a.id, a]));
+  // A closed account is only followed if it has history here: it then winds
+  // down to nothing like any other, and what it earned stays in the score.
+  // One that was closed before it ever synced has nothing to add.
+  const fetched = input.fetched.filter(
+    (a) => !a.closed || Boolean(stored.get(a.id)?.lastSyncedOn),
+  );
   const quarter = quarterOf(today);
   const windowStart = addDays(today, -BALANCE_WINDOW_DAYS);
 
@@ -282,7 +291,8 @@ export function planSync(input: SyncInput): SyncPlan {
   // rank, from the last day it synced, until it is reconnected or left out
   // of leagues. An account that is no longer listed at all was removed by
   // its owner, so it stops counting instead of pausing them for good.
-  const listed = new Set(input.listedIds ?? fetched.map((f) => f.id));
+  const listed = new Set(input.listedIds ?? input.fetched.map((f) => f.id));
+  const followed = new Set(fetched.map((f) => f.id));
   const dropped = fetched
     .filter((a) => !a.connected && isCounted(a))
     .map((a) => stored.get(a.id)?.lastSyncedOn ?? today)
@@ -294,8 +304,8 @@ export function planSync(input: SyncInput): SyncPlan {
   return {
     accounts,
     goneAccountIds: gone.filter((a) => a.lastSyncedOn !== null).map((a) => a.id),
-    forgetAccountIds: gone
-      .filter((a) => a.lastSyncedOn === null)
+    forgetAccountIds: storedAccounts
+      .filter((a) => a.lastSyncedOn === null && !followed.has(a.id))
       .map((a) => a.id),
     snapshots,
     returns,

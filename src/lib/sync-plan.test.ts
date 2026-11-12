@@ -173,6 +173,28 @@ describe("planSync", () => {
     expect(plan.goneAccountIds).toEqual([]);
   });
 
+  it("keeps following a closed account that has history, and skips one that has none", () => {
+    const plan = planSync(
+      input({
+        fetched: [
+          account(),
+          account({ id: "old", closed: true, balance: 0 }),
+          account({ id: "dead", closed: true, balance: 0 }),
+          account({ id: "stale", closed: true, balance: 0 }),
+        ],
+        storedAccounts: [
+          { id: "a1", counted: true, lastSyncedOn: "2026-11-10" },
+          { id: "old", counted: true, lastSyncedOn: "2026-11-10" },
+          { id: "stale", counted: true, lastSyncedOn: null },
+        ],
+      }),
+    );
+    expect(plan.accounts.map((a) => a.id)).toEqual(["a1", "old"]);
+    expect(plan.snapshots.map((s) => s.accountId)).toEqual(["a1", "old"]);
+    expect(plan.goneAccountIds).toEqual([]);
+    expect(plan.forgetAccountIds).toEqual(["stale"]);
+  });
+
   it("does not treat an account that was listed but not read as removed", () => {
     const plan = planSync(
       input({

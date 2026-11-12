@@ -14,7 +14,7 @@ export function accountLabel(account: {
   const name = clean(account.name) || clean(account.rawType);
   const parts: string[] = [];
   // "Robinhood" in front of "Robinhood Individual" would say it twice.
-  if (institution && !name.toLowerCase().includes(institution.toLowerCase())) {
+  if (institution && !hasWord(name, institution)) {
     parts.push(institution);
   }
   if (name) parts.push(name);
@@ -26,3 +26,9 @@ export function accountLabel(account: {
 
 const clean = (value: string | null): string =>
   (value ?? "").replace(/\s+/g, " ").trim();
+
+/** Whether `text` contains `word` as whole words, ignoring case. */
+function hasWord(text: string, word: string): boolean {
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`, "i").test(text);
+}

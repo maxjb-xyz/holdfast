@@ -12,13 +12,13 @@ import {
   Unauthorized,
   withAccessToken,
 } from "./snaptrade/access";
-import { SnapTradeApi } from "./snaptrade/api";
+import { SnapTradeApi, type SnapAccount } from "./snaptrade/api";
 import { refreshTokens } from "./snaptrade/oauth";
 import { pauseForReconnect, tokenStore } from "./snaptrade/token-store";
 import { planSync, type FetchedAccount } from "@/lib/sync-plan";
 
 /** Accounts read per person, to stay inside a Worker's request budget. */
-const MAX_ACCOUNTS = 8;
+const MAX_ACCOUNTS = 12;
 /** D1 allows 100 bound values per statement. */
 const MAX_PARAMS = 90;
 
@@ -44,13 +44,19 @@ async function fetchAll(
     api.connections(),
   ]);
   // Leagues score investments. Bank accounts, loans and the like that came
-  // along with a connection are left out, and so are closed accounts.
-  const accounts = listed.filter(
-    (a) =>
-      a.kind === "investment" &&
-      a.status !== "closed" &&
-      a.status !== "archived",
-  );
+  // along with a connection are left out.
+  const closed = (a: SnapAccount) =>
+    a.status === "closed" || a.status === "archived";
+  // If the cap ever bites, paper and closed accounts are the ones dropped.
+  const rank = (a: SnapAccount) => (closed(a) ? 2 : a.isPaper ? 1 : 0);
+  const accounts = listed
+    .filter((a) => a.kind === "investment")
+    .sort((a, b) => rank(a) - rank(b));
+  if (accounts.length > MAX_ACCOUNTS) {
+    console.warn(
+      `sync read ${MAX_ACCOUNTS} of ${accounts.length} investment accounts`,
+    );
+  }
   const disabled = new Set(
     connections.filter((c) => c.disabled).map((c) => c.id),
   );
@@ -87,6 +93,7 @@ async function fetchAll(
             null,
         }),
         isPaper: a.isPaper,
+        closed: closed(a),
         connected,
         balance: a.balance,
         transactionsThrough: a.transactionsReady ? a.transactionsThrough : null,

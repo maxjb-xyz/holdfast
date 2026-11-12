@@ -16,6 +16,15 @@ describe("accountLabel", () => {
     ).toBe("Robinhood Individual");
   });
 
+  it("keeps a short brokerage name that only appears inside another word", () => {
+    expect(
+      accountLabel({ ...none, institution: "TD", name: "Standard Margin" }),
+    ).toBe("TD Standard Margin");
+    expect(
+      accountLabel({ ...none, institution: "E*TRADE", name: "E*TRADE Roth" }),
+    ).toBe("E*TRADE Roth");
+  });
+
   it("falls back to the account type when there is no name", () => {
     expect(
       accountLabel({ ...none, institution: "Schwab", rawType: "Margin", lastFour: "0091" }),
