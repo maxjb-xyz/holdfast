@@ -155,7 +155,22 @@ describe("planSync", () => {
       }),
     );
     expect(plan.goneAccountIds).toEqual(["gone"]);
+    expect(plan.forgetAccountIds).toEqual([]);
     expect(plan.pausedSince).toBeNull();
+  });
+
+  it("forgets an unlisted account that never synced a balance", () => {
+    const plan = planSync(
+      input({
+        fetched: [account()],
+        storedAccounts: [
+          { id: "a1", counted: true, lastSyncedOn: null },
+          { id: "bank", counted: true, lastSyncedOn: null },
+        ],
+      }),
+    );
+    expect(plan.forgetAccountIds).toEqual(["bank"]);
+    expect(plan.goneAccountIds).toEqual([]);
   });
 
   it("does not treat an account that was listed but not read as removed", () => {

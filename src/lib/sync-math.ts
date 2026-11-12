@@ -31,6 +31,9 @@ export const BALANCE_WINDOW_DAYS = 10;
 /** How far back transactions are read for habits and the One Year Hold badge. */
 export const ACTIVITY_LOOKBACK_DAYS = 800;
 
+/** The most holdings kept per person, largest first. */
+export const MAX_HOLDINGS = 100;
+
 const DIVIDEND_TYPES = new Set(["DIVIDEND", "STOCK_DIVIDEND", "SUBSTITUTE_DIVIDEND"]);
 
 const MONEY_IN = new Set(["CONTRIBUTION", "DEPOSIT"]);
@@ -240,7 +243,7 @@ export function buildFacts(input: {
       };
     })
     .sort((a, b) => b.share - a.share)
-    .slice(0, 40);
+    .slice(0, MAX_HOLDINGS);
 
   const openings = [
     ...heldSince(activities, positions, input.firstSeen ?? {}, today).values(),

@@ -78,6 +78,11 @@ export type SyncPlan = {
    * there. They stop counting, so they cannot hold a rank paused for good.
    */
   goneAccountIds: string[];
+  /**
+   * Stored accounts SnapTrade no longer lists that never synced a balance.
+   * They hold nothing worth keeping, so they are removed outright.
+   */
+  forgetAccountIds: string[];
   snapshots: { accountId: string; date: string; balance: number }[];
   returns: (DailyReturnRow & { accountId: string })[];
   /** Null when facts could not be rebuilt and the stored ones should stay. */
@@ -285,10 +290,12 @@ export function planSync(input: SyncInput): SyncPlan {
   const pausedSince =
     dropped.length === 0 ? null : (input.pausedSince ?? dropped[0]);
 
+  const gone = storedAccounts.filter((a) => !listed.has(a.id));
   return {
     accounts,
-    goneAccountIds: storedAccounts
-      .filter((a) => !listed.has(a.id))
+    goneAccountIds: gone.filter((a) => a.lastSyncedOn !== null).map((a) => a.id),
+    forgetAccountIds: gone
+      .filter((a) => a.lastSyncedOn === null)
       .map((a) => a.id),
     snapshots,
     returns,
