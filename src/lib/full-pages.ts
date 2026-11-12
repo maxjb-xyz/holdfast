@@ -6,14 +6,82 @@
 import {
   BADGES,
   BADGE_KEYS,
+  WELL_SPREAD_LIMIT,
   badgeStatuses,
   type BadgeKey,
+  type HabitFacts,
+  type Holding,
 } from "./badges";
 import type { Point } from "./chart";
-import { ordinal, quarterLabel, shortDate } from "./format";
-import type { League, Player } from "./model";
+import {
+  monthName,
+  ordinal,
+  plural,
+  quarterLabel,
+  shortDate,
+  signedPercent,
+} from "./format";
+import type { League, LinkedAccount, Player } from "./model";
 import { leaguePage } from "./pages";
-import { quarterOf, quartersEndingAt } from "./quarters";
+import { daysInclusive, quarterOf, quartersEndingAt } from "./quarters";
+
+// --------------------------------------------------------------- accounts
+
+/** A linked account with whatever the brokerage said about it. */
+export type AccountView = LinkedAccount & {
+  institution?: string | null;
+  name?: string | null;
+  lastFour?: string | null;
+  positions?: number | null;
+};
+
+export type AccountLine = {
+  id: string;
+  /** The account's own name, such as "Roth IRA". */
+  title: string;
+  /** Brokerage, masked number and position count, as far as they are known. */
+  detail: string;
+  counted: boolean;
+  connected: boolean;
+};
+
+/** How one account reads in a list: its name, and a quieter line of detail. */
+export function accountLine(account: AccountView): AccountLine {
+  const parts: string[] = [];
+  if (account.name && account.institution) parts.push(account.institution);
+  if (account.lastFour) parts.push(`··${account.lastFour}`);
+  if (typeof account.positions === "number") {
+    parts.push(plural(account.positions, "position"));
+  }
+  if (!account.connected) parts.push("Link dropped");
+  return {
+    id: account.id,
+    title: account.name ?? account.label,
+    detail: parts.join(" · "),
+    counted: account.counted,
+    connected: account.connected,
+  };
+}
+
+/** Accounts gathered under their brokerage, in the order given. */
+export function accountGroups(
+  list: readonly AccountView[],
+): { institution: string | null; accounts: AccountLine[] }[] {
+  const groups: { institution: string | null; accounts: AccountLine[] }[] = [];
+  for (const account of list) {
+    const key = account.name ? (account.institution ?? null) : null;
+    let group = groups.find((g) => g.institution === key);
+    if (!group) groups.push((group = { institution: key, accounts: [] }));
+    // Under a brokerage heading the detail line need not repeat its name.
+    const line = accountLine(account);
+    group.accounts.push(
+      key === null
+        ? line
+        : { ...line, detail: line.detail.replace(`${key} · `, "").replace(key, "") },
+    );
+  }
+  return groups;
+}
 
 // ---------------------------------------------------------------- leagues
 
@@ -162,4 +230,163 @@ export function badgesPage(player: Player, today: string): BadgesPage {
 /** "Q4 2026", for page headers. */
 export function currentQuarterLabel(today: string): string {
   return quarterLabel(quarterOf(today).key);
+}
+
+// --------------------------------------------------------------- holdings
+
+/** A holding with the extras the sync adds when the brokerage gives them. */
+type HoldingMore = Holding & { name?: string; accounts?: string[] };
+type FactsMore = HabitFacts & { otherHoldings?: readonly HoldingMore[] };
+
+export const OTHER_SCOPE = "other";
+
+export type HoldingRow = {
+  ticker: string;
+  name: string | null;
+  /** Share of the portfolio in view, 0 to 1. */
+  share: number;
+  change: number | null;
+  /** Above the Well Spread mark. */
+  over: boolean;
+  largest: boolean;
+  /** "Mar 2023", or "Before Nov 2026" when it predates Holdfast's records. */
+  since: string | null;
+  /** Names of the accounts holding it. Empty when not known. */
+  accounts: string;
+};
+
+export type HoldingsPage = {
+  rows: HoldingRow[];
+  scope: string;
+  /** Empty when there is nothing to choose between. */
+  filters: { key: string; label: string; active: boolean }[];
+  /** How many positions and accounts the counted portfolio has. */
+  positions: number;
+  countedAccounts: number;
+  largest: { ticker: string; share: number } | null;
+  stats: { label: string; value: string }[];
+  /** The split bar: the largest few, then everything else as one piece. */
+  split: { label: string; share: number }[];
+};
+
+const MONTH_YEAR = (date: string) =>
+  `${monthName(date)} ${date.slice(0, 4)}`;
+
+export function holdingsPage(
+  player: Player,
+  accounts: readonly AccountView[],
+  firstSeen: Readonly<Record<string, string>>,
+  today: string,
+  scope = "all",
+): HoldingsPage {
+  const facts: FactsMore = player.facts;
+  const counted: readonly HoldingMore[] = facts.holdings;
+  const other = facts.otherHoldings ?? [];
+  const title = new Map(accounts.map((a) => [a.id, accountLine(a).title]));
+  const withHoldings = accounts.filter(
+    (a) => a.counted && counted.some((h) => h.accounts?.includes(a.id)),
+  );
+
+  const filters: HoldingsPage["filters"] = [];
+  if (withHoldings.length > 1 || other.length > 0) {
+    filters.push({ key: "all", label: "All counted", active: false });
+    if (withHoldings.length > 1) {
+      for (const a of withHoldings) {
+        filters.push({ key: a.id, label: title.get(a.id) ?? a.label, active: false });
+      }
+    }
+    if (other.length > 0) {
+      filters.push({ key: OTHER_SCOPE, label: "Left out", active: false });
+    }
+  }
+  const chosen = filters.find((f) => f.key === scope)?.key ?? "all";
+  for (const f of filters) f.active = f.key === chosen;
+
+  const inView =
+    chosen === OTHER_SCOPE
+      ? other
+      : chosen === "all"
+        ? counted
+        : counted.filter((h) => h.accounts?.includes(chosen));
+  const sorted = [...inView].sort((a, b) => b.share - a.share);
+  const rows = sorted.map<HoldingRow>((h, i) => {
+    const seen = firstSeen[h.ticker];
+    return {
+      ticker: h.ticker,
+      name: h.name ?? null,
+      share: h.share,
+      change: h.change,
+      over: h.share > WELL_SPREAD_LIMIT,
+      largest: i === 0,
+      since: !seen
+        ? null
+        : seen <= player.since
+          ? `Before ${MONTH_YEAR(seen)}`
+          : MONTH_YEAR(seen),
+      accounts: (h.accounts ?? [])
+        .map((id) => title.get(id))
+        .filter(Boolean)
+        .join(", "),
+    };
+  });
+
+  const top = [...counted].sort((a, b) => b.share - a.share)[0] ?? null;
+  const stats: HoldingsPage["stats"] = [];
+  if (top) {
+    const gap = Math.abs(top.share - WELL_SPREAD_LIMIT) * 100;
+    stats.push(
+      top.share <= WELL_SPREAD_LIMIT
+        ? { label: "Under the 25% limit", value: `By ${gap.toFixed(1)} pts` }
+        : { label: "Over the 25% limit", value: `By ${gap.toFixed(1)} pts` },
+    );
+  }
+  const moved = counted.filter((h) => h.change !== null);
+  const best = [...moved].sort((a, b) => (b.change as number) - (a.change as number))[0];
+  const worst = [...moved].sort((a, b) => (a.change as number) - (b.change as number))[0];
+  if (best) {
+    stats.push({
+      label: "Best this quarter",
+      value: `${best.ticker} ${signedPercent(best.change as number, 1)}`,
+    });
+  }
+  if (worst && worst.ticker !== best?.ticker) {
+    stats.push({
+      label: "Weakest",
+      value: `${worst.ticker} ${signedPercent(worst.change as number, 1)}`,
+    });
+  }
+  if (facts.holdingSince) {
+    const months = Math.floor(
+      (daysInclusive(facts.holdingSince, today) - 1) / 30.44,
+    );
+    if (months >= 1) {
+      stats.push({ label: "Longest held", value: plural(months, "month") });
+    }
+  }
+  const quarter = quarterOf(today);
+  const dividends = facts.dividendDates.filter(
+    (d) => d >= quarter.start && d <= today,
+  ).length;
+  stats.push({ label: "Dividends", value: `${dividends} this quarter` });
+
+  const lead = sorted.slice(0, 4);
+  const rest = sorted.slice(4);
+  const split = lead.map((h) => ({ label: h.ticker, share: h.share }));
+  if (rest.length > 0) {
+    split.push({
+      label: `${rest.length} more`,
+      share: rest.reduce((sum, h) => sum + h.share, 0),
+    });
+  }
+
+  return {
+    rows,
+    scope: chosen,
+    filters,
+    positions: counted.length,
+    countedAccounts: accounts.filter((a) => a.counted).length,
+    largest: top ? { ticker: top.ticker, share: top.share } : null,
+    stats,
+    split,
+  };
 }

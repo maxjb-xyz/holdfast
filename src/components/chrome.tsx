@@ -3,11 +3,12 @@ import { Icon, type IconName } from "./icons";
 
 const NAV: { label: string; href: string; icon: IconName }[] = [
   { label: "League", href: "/league", icon: "chart" },
+  { label: "Holdings", href: "/holdings", icon: "pie" },
   { label: "Profile", href: "/profile", icon: "user" },
   { label: "Wrapped", href: "/wrapped", icon: "spark" },
 ];
 
-export type Section = "League" | "Profile" | "Wrapped" | null;
+export type Section = "League" | "Holdings" | "Profile" | "Wrapped" | null;
 
 export function Wordmark({ href = "/league" }: { href?: string }) {
   return (
@@ -67,8 +68,8 @@ export function Header({
           <Icon name="userPlus" size={19} />
         </Link>
         <Link
-          href="/profile"
-          aria-label="Your profile"
+          href="/settings"
+          aria-label="Settings"
           className="flex size-8 items-center justify-center rounded-full border border-rule text-xs font-semibold transition-colors hover:border-grey"
         >
           {initial}

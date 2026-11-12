@@ -51,6 +51,27 @@ const PATHS = {
   ),
   close: <path d="M6 6l12 12M18 6 6 18" />,
   download: <path d="M12 4v11M7 11l5 5 5-5M5 20h14" />,
+  down: <path d="M6 9l6 6 6-6" />,
+  pie: (
+    <>
+      <path d="M12 3a9 9 0 1 0 9 9h-9z" />
+      <path d="M15 3.5A9 9 0 0 1 20.5 9H15z" />
+    </>
+  ),
+  edit: <path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />,
+  out: <path d="M10 5H5v14h5M14 8l4 4-4 4M9 12h9" />,
+  copy: (
+    <>
+      <rect x="8" y="8" width="11" height="11" rx="2" />
+      <path d="M5 15V6a1 1 0 0 1 1-1h9" />
+    </>
+  ),
+  calendar: (
+    <>
+      <rect x="4" y="6" width="16" height="14" rx="2" />
+      <path d="M4 10h16M9 4v4M15 4v4" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof PATHS;

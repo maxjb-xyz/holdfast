@@ -99,7 +99,11 @@ export async function createLeagueAction(formData: FormData): Promise<void> {
 /** Opens the invite page for a pasted code or link. */
 export async function openInviteAction(formData: FormData): Promise<void> {
   const code = inviteCodeFrom(String(formData.get("code") ?? ""));
-  redirect(code ? `/join/${code}` : "/leagues?notice=not-found");
+  redirect(
+    code
+      ? `/join/${code}`
+      : `${backTo(formData, "/leagues")}?notice=not-found`,
+  );
 }
 
 export async function joinLeagueAction(formData: FormData): Promise<void> {
@@ -131,7 +135,7 @@ export async function disconnectAction(): Promise<void> {
   const { disconnect } = await import("./league-admin");
   const { snaptradeConfig } = await import("./env");
   const revoked = await disconnect(viewer.id, await snaptradeConfig());
-  redirect(`/leagues?notice=${revoked ? "disconnected" : "disconnected-check"}`);
+  redirect(`/settings?notice=${revoked ? "disconnected" : "disconnected-check"}`);
 }
 
 /** Deletes everything about the person in one step and signs them out. */
@@ -223,12 +227,13 @@ export async function renameSelfAction(formData: FormData): Promise<void> {
 }
 
 /** Pulls fresh numbers from SnapTrade, at most once a minute. */
-export async function syncNowAction(): Promise<void> {
+export async function syncNowAction(formData: FormData): Promise<void> {
+  const page = backTo(formData, "/settings");
   const viewer = await getViewer();
-  if (viewer?.kind !== "user") redirect("/settings");
+  if (viewer?.kind !== "user") redirect(page);
   const { snaptradeConfig } = await import("./env");
   const config = await snaptradeConfig();
-  if (!config) redirect("/settings?notice=setup");
+  if (!config) redirect(`${page}?notice=sync-failed`);
   const { syncUser } = await import("./sync");
   let result: string;
   try {
@@ -237,7 +242,7 @@ export async function syncNowAction(): Promise<void> {
     console.error("manual sync failed", cause);
     result = "failed";
   }
-  redirect(`/settings?notice=sync-${result}`);
+  redirect(`${page}?notice=sync-${result}`);
 }
 
 /** Skips the rest of the first run and opens the demo league. */

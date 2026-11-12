@@ -125,15 +125,27 @@ function Settings({ page, isDemo }: { page: ProfilePage; isDemo: boolean }) {
         </form>
         {!isDemo && (
           <Link
-            href="/leagues#data"
+            href="/settings"
             className="hover-text flex min-h-11 items-center gap-2 text-dim"
           >
-            Leave leagues or delete your data
+            All settings and your data
             <Icon name="right" size={14} />
           </Link>
         )}
       </section>
     </>
+  );
+}
+
+function More({ href, children }: { href: string; children: string }) {
+  return (
+    <Link
+      href={href}
+      className="hover-text -my-2 flex min-h-9 items-center gap-1.5 self-start text-[13px] text-dim"
+    >
+      {children}
+      <Icon name="arrow" size={14} />
+    </Link>
   );
 }
 
@@ -289,6 +301,7 @@ export function ProfileView({
                       {page.holdingsNote ? `${page.holdingsNote} ` : ""}Mark at
                       25%, the Well Spread limit.
                     </span>
+                    <More href="/holdings">All holdings</More>
                   </>
                 ) : (
                   <p className="m-0 text-xs text-grey">
@@ -314,6 +327,7 @@ export function ProfileView({
             <div className="flex flex-col gap-3.5">
               <Badges page={page} size={52} />
             </div>
+            {page.isSelf && <More href="/badges">Badge progress</More>}
           </section>
           <Settings page={page} isDemo={isDemo} />
         </aside>
@@ -396,6 +410,7 @@ export function ProfileView({
           <div className="grid grid-cols-2 gap-x-3 gap-y-3.5">
             <Badges page={page} size={40} short />
           </div>
+          {page.isSelf && <More href="/badges">Badge progress</More>}
         </section>
         {wrappedHref && (
           <Link
@@ -427,6 +442,7 @@ export function ProfileView({
               {page.holdingsNote ? `${page.holdingsNote} ` : ""}Mark at 25%, the
               Well Spread limit.
             </span>
+            <More href="/holdings">All holdings</More>
           </section>
         )}
         <BestWorst page={page} />
