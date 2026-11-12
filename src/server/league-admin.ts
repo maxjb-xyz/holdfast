@@ -2,9 +2,9 @@ import "server-only";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import * as t from "@/db/schema";
-import { cleanLeagueName } from "@/lib/inputs";
+import { cleanLeagueName, cleanStartDate } from "@/lib/inputs";
 import { MAX_LEAGUE_MEMBERS } from "@/lib/model";
-import { toDateString } from "@/lib/quarters";
+import { addDays, toDateString } from "@/lib/quarters";
 import { randomToken, unseal } from "./crypto";
 import type { SnapTradeConfig } from "./env";
 import { revokeToken } from "./snaptrade/oauth";
@@ -27,10 +27,15 @@ export type LeagueOutcome =
   | { ok: true; leagueId: string }
   | { ok: false; reason: "name" | "too-many" | "not-found" | "full" };
 
-/** Makes a league with the person as its owner and first member. */
+/**
+ * Makes a league with the person as its owner and first member. With a
+ * start day in the past year, the league is scored from that day, using each
+ * member's backfilled history. Otherwise it starts today.
+ */
 export async function createLeague(
   userId: string,
   rawName: string,
+  rawStartOn?: string | null,
 ): Promise<LeagueOutcome> {
   const name = cleanLeagueName(rawName);
   if (!name) return { ok: false, reason: "name" };
@@ -40,6 +45,7 @@ export async function createLeague(
   const db = await getDb();
   const id = randomToken(9);
   const day = today();
+  const startOn = cleanStartDate(rawStartOn, day);
   await db.batch([
     db.insert(t.leagues).values({
       id,
@@ -47,8 +53,13 @@ export async function createLeague(
       inviteCode: randomToken(12),
       ownerId: userId,
       createdOn: day,
+      startOn,
     }),
-    db.insert(t.leagueMembers).values({ leagueId: id, userId, joinedOn: day }),
+    db
+      .insert(t.leagueMembers)
+      // A member starts at 0% on the day they join and is scored from the
+      // next one, so the day before the start is the joining day.
+      .values({ leagueId: id, userId, joinedOn: startOn ? addDays(startOn, -1) : day }),
   ]);
   return { ok: true, leagueId: id };
 }
@@ -84,7 +95,11 @@ export async function previewInvite(
   };
 }
 
-/** Joins the league behind an invite code. Late joiners are scored from today. */
+/**
+ * Joins the league behind an invite code. Late joiners are scored from
+ * today, except in a league with a start day, where everyone is scored from
+ * that day.
+ */
 export async function joinLeague(
   userId: string,
   code: string,
@@ -100,7 +115,8 @@ export async function joinLeague(
   // for the last place cannot both get in.
   await db.run(sql`
     insert into league_members (league_id, user_id, joined_on)
-    select ${invite.leagueId}, ${userId}, ${today()}
+    select ${invite.leagueId}, ${userId},
+      coalesce((select date(start_on, '-1 day') from leagues where id = ${invite.leagueId}), ${today()})
     where (select count(*) from league_members where league_id = ${invite.leagueId}) < ${MAX_LEAGUE_MEMBERS}
     on conflict do nothing`);
   const [joined] = await db

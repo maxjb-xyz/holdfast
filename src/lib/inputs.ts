@@ -39,6 +39,31 @@ export function cleanDisplayName(raw: string): string | null {
   return cleanName(raw, DISPLAY_NAME_MAX);
 }
 
+/** How far back a league can be started. Brokerage history reaches a year. */
+export const LEAGUE_START_MAX_DAYS = 365;
+
+/**
+ * The first day a new league is scored on, when its maker picked one in the
+ * past. Null for today, a missing value or anything out of range, which all
+ * mean the league starts today.
+ */
+export function cleanStartDate(
+  raw: string | null | undefined,
+  today: string,
+): string | null {
+  const value = (raw ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const time = Date.parse(`${value}T00:00:00Z`);
+  // Rejects days that do not exist, such as February 30th.
+  if (Number.isNaN(time) || new Date(time).toISOString().slice(0, 10) !== value) {
+    return null;
+  }
+  const earliest = new Date(Date.parse(`${today}T00:00:00Z`) - LEAGUE_START_MAX_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  return value >= earliest && value < today ? value : null;
+}
+
 /** Pulls an invite code out of whatever was pasted: a code or a whole link. */
 export function inviteCodeFrom(pasted: string): string | null {
   const text = pasted.trim().replace(/[?#].*$/, "");

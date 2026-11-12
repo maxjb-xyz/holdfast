@@ -4,6 +4,7 @@ import { getDb } from "@/db";
 import * as t from "@/db/schema";
 import { accountLabel } from "@/lib/account-label";
 import type { BadgeKey } from "@/lib/badges";
+import { needsHistory } from "@/lib/backfill";
 import { ACTIVITY_LOOKBACK_DAYS } from "@/lib/sync-math";
 import { addDays, toDateString } from "@/lib/quarters";
 import type { SnapTradeConfig } from "./env";
@@ -37,6 +38,7 @@ function chunks<T>(items: readonly T[], columns: number): T[][] {
 async function fetchAll(
   accessToken: string,
   today: string,
+  wantsHistory: (accountId: string) => boolean,
 ): Promise<{ accounts: FetchedAccount[]; listedIds: string[] }> {
   const api = new SnapTradeApi(accessToken);
   const [listed, connections] = await Promise.all([
@@ -73,6 +75,11 @@ async function fetchAll(
       return null;
     }
   };
+  // When one account needs its history, every account's is read, so each
+  // account's share of a past day is worked out from all of them together.
+  const readHistory = accounts
+    .slice(0, MAX_ACCOUNTS)
+    .some((a) => wantsHistory(a.id));
   const read = await Promise.all(
     accounts.slice(0, MAX_ACCOUNTS).map(async (a) => {
       const connected =
@@ -81,12 +88,15 @@ async function fetchAll(
         a.institution ??
         (a.connectionId ? brokerages.get(a.connectionId) : null) ??
         null;
-      const [activities, positions] = connected
+      const [activities, positions, history] = connected
         ? await Promise.all([
             orNull(api.activities(a.id, since)),
             a.holdingsAvailable ? orNull(api.positions(a.id)) : null,
+            readHistory
+              ? orNull(api.balanceHistory(a.id).then((h) => h ?? ("unavailable" as const)))
+              : undefined,
           ])
-        : [null, null];
+        : [null, null, undefined];
       return {
         id: a.id,
         label: accountLabel({ ...a, institution }),
@@ -100,6 +110,7 @@ async function fetchAll(
         transactionsThrough: a.transactionsReady ? a.transactionsThrough : null,
         activities,
         positions,
+        history,
       };
     }),
   );
@@ -143,13 +154,28 @@ export async function syncUser(
   const today = toDateString(new Date());
   const store = tokenStore(userId, config.encryptionKey);
 
+  // Which accounts still lack their history, so only those are asked for it.
+  const known = new Map(
+    (
+      await (await getDb())
+        .select({
+          id: t.accounts.id,
+          historyCheckedOn: t.accounts.historyCheckedOn,
+          historyFrom: t.accounts.historyFrom,
+        })
+        .from(t.accounts)
+        .where(eq(t.accounts.userId, userId))
+    ).map((a) => [a.id, a]),
+  );
+  const wantsHistory = (id: string) => needsHistory(known.get(id), today);
+
   let fetched: FetchedAccount[];
   let listedIds: string[];
   try {
     ({ accounts: fetched, listedIds } = await withAccessToken(
       store,
       (refreshToken) => refreshTokens(config, refreshToken),
-      (accessToken) => fetchAll(accessToken, today),
+      (accessToken) => fetchAll(accessToken, today, wantsHistory),
     ));
   } catch (error) {
     if (error instanceof ReconnectNeeded) {
@@ -202,8 +228,34 @@ export async function syncUser(
   const mine = fetched.filter((a) => !taken.has(a.id));
   const ownedIds = owned.map((a) => a.id);
 
+  // Where each account's own measured days begin. Estimates stop there.
+  const firstMeasured: Record<string, string> = {};
+  if (mine.some((a) => Array.isArray(a.history))) {
+    const rows = await db
+      .select({
+        accountId: t.dailyReturns.accountId,
+        first: sql<string>`min(${t.dailyReturns.date})`,
+      })
+      .from(t.dailyReturns)
+      .where(
+        and(
+          eq(t.dailyReturns.estimated, false),
+          inArray(
+            t.dailyReturns.accountId,
+            db
+              .select({ id: t.accounts.id })
+              .from(t.accounts)
+              .where(eq(t.accounts.userId, userId)),
+          ),
+        ),
+      )
+      .groupBy(t.dailyReturns.accountId);
+    for (const r of rows) firstMeasured[r.accountId] = r.first;
+  }
+
   const plan = planSync({
     today,
+    firstMeasured,
     fetched: mine,
     storedAccounts: owned,
     snapshots,
@@ -215,7 +267,7 @@ export async function syncUser(
 
   const now = new Date();
   const writes = [];
-  for (const group of chunks(plan.accounts, 10)) {
+  for (const group of chunks(plan.accounts, 12)) {
     writes.push(
       db
         .insert(t.accounts)
@@ -231,6 +283,8 @@ export async function syncUser(
             counted: a.countedIfNew,
             connected: a.connected,
             lastSyncedOn: a.lastSyncedOn,
+            historyCheckedOn: a.historyCheckedOn,
+            historyFrom: a.historyFrom,
           })),
         )
         .onConflictDoUpdate({
@@ -244,6 +298,8 @@ export async function syncUser(
             positionsCount: sql`coalesce(excluded.positions_count, ${t.accounts.positionsCount})`,
             connected: sql`excluded.connected`,
             lastSyncedOn: sql`excluded.last_synced_on`,
+            historyCheckedOn: sql`excluded.history_checked_on`,
+            historyFrom: sql`excluded.history_from`,
           },
           setWhere: eq(t.accounts.userId, userId),
         }),
@@ -285,7 +341,7 @@ export async function syncUser(
         }),
     );
   }
-  for (const group of chunks(plan.returns, 6)) {
+  for (const group of chunks(plan.returns, 7)) {
     writes.push(
       db
         .insert(t.dailyReturns)
@@ -297,6 +353,7 @@ export async function syncUser(
             partial: r.partial,
             weight: r.weight ?? null,
             flowRate: r.flowRate ?? 0,
+            estimated: false,
           })),
         )
         .onConflictDoUpdate({
@@ -306,8 +363,35 @@ export async function syncUser(
             partial: sql`excluded.partial`,
             weight: sql`excluded.weight`,
             flowRate: sql`excluded.flow_rate`,
+            estimated: sql`excluded.estimated`,
           },
         }),
+    );
+  }
+  // A year of estimated days per account goes in as one statement each, as
+  // JSON, to stay well inside D1's limits. Only an earlier estimate is ever
+  // replaced: a day Holdfast measured keeps its return.
+  const backfilled = new Map<string, (string | number | null)[][]>();
+  for (const r of plan.backfill) {
+    const rows = backfilled.get(r.accountId) ?? [];
+    rows.push([r.date, r.dailyReturn, r.partial ? 1 : 0, r.weight ?? null, r.flowRate ?? 0]);
+    backfilled.set(r.accountId, rows);
+  }
+  for (const [accountId, rows] of backfilled) {
+    writes.push(
+      db.run(sql`
+        insert into daily_returns
+          (account_id, date, daily_return, partial, weight, flow_rate, estimated)
+        select ${accountId}, json_extract(value, '$[0]'), json_extract(value, '$[1]'),
+          json_extract(value, '$[2]'), json_extract(value, '$[3]'),
+          json_extract(value, '$[4]'), 1
+        from json_each(${JSON.stringify(rows)})
+        where exists (
+          select 1 from accounts a where a.id = ${accountId} and a.user_id = ${userId})
+        on conflict (account_id, date) do update set
+          daily_return = excluded.daily_return, partial = excluded.partial,
+          weight = excluded.weight, flow_rate = excluded.flow_rate
+        where daily_returns.estimated = 1`),
     );
   }
   if (ids.length > 0 || ownedIds.length > 0) {

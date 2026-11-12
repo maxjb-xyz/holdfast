@@ -68,8 +68,23 @@ link drops, the last balance waits until the account is reconnected.
 
 Accounts sync nightly at 23:30 UTC through a Worker cron, and in the
 background when someone opens the app with numbers more than an hour old.
-The first score appears the day after sign-in, because a return needs two
-days of balances.
+Without history, the first score appears the day after sign-in, because a
+return needs two days of balances.
+
+### History backfill
+
+On an account's first sync Holdfast asks SnapTrade for its estimated daily
+value over the past year (`GET /accounts/{id}/balanceHistory`, a beta
+endpoint), pairs it with the account's deposits and withdrawals, and stores
+the resulting daily returns marked as estimated. The values themselves are
+never stored. A day Holdfast measured itself is never replaced by an
+estimate. A league can then be created with a start date up to a year back,
+and every member is scored from that day.
+
+The endpoint is off by default. Switch it on for free under Add-ons in the
+[SnapTrade dashboard](https://dashboard.snaptrade.com/add-ons). While it is
+off, or for a brokerage that does not support it, Holdfast asks again once a
+day and scoring simply starts at sign-in.
 
 ## Local development
 
@@ -119,6 +134,8 @@ SnapTrade" explains that sign-in is not set up and the demo stays open.
 
 ## Known limits
 
+- Backfilled history is SnapTrade's estimate and reaches back one year at
+  most. It can have gaps, which show as partial.
 - SnapTrade Test apps hold five users.
 - Scores are kept per UTC day.
 - One Year Hold counts a holding from its opening trade when the brokerage's

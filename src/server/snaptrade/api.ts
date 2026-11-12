@@ -58,6 +58,9 @@ export type SnapPosition = {
   name: string | null;
 };
 
+/** One day of an account's estimated total value. */
+export type SnapHistoryPoint = { date: string; value: number };
+
 /** Position kinds that are contracts, not securities a person owns. */
 const CONTRACT_KINDS = new Set(["option", "future", "future_option", "cfd"]);
 
@@ -90,10 +93,10 @@ export class SnapTradeApi {
     private readonly fetchImpl: Fetch = fetch,
   ) {}
 
-  private async get(
+  private async request(
     path: string,
     query: Record<string, string> = {},
-  ): Promise<unknown> {
+  ): Promise<Response> {
     const url = new URL(path, BASE);
     for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
     const response = await this.fetchImpl(url.toString(), {
@@ -103,6 +106,14 @@ export class SnapTradeApi {
       },
     });
     if (response.status === 401) throw new Unauthorized();
+    return response;
+  }
+
+  private async get(
+    path: string,
+    query: Record<string, string> = {},
+  ): Promise<unknown> {
+    const response = await this.request(path, query);
     if (!response.ok)
       throw new Error(`SnapTrade ${path} answered ${response.status}`);
     return response.json();
@@ -208,6 +219,29 @@ export class SnapTradeApi {
       if (page.length < limit) break;
     }
     return all;
+  }
+
+  /**
+   * The account's estimated total value for each day of the past year, from
+   * SnapTrade's beta history endpoint. Null when the feature is not switched
+   * on for the app or the brokerage connection does not support it.
+   */
+  async balanceHistory(accountId: string): Promise<SnapHistoryPoint[] | null> {
+    const response = await this.request(
+      `/accounts/${encodeURIComponent(accountId)}/balanceHistory`,
+    );
+    if (response.status === 403 || response.status === 404) return null;
+    if (!response.ok) {
+      throw new Error(`SnapTrade balanceHistory answered ${response.status}`);
+    }
+    const body = obj(await response.json());
+    const history = Array.isArray(body.history) ? body.history : [];
+    return history.flatMap((raw) => {
+      const point = obj(raw);
+      const date = day(point.date);
+      const value = num(point.total_value);
+      return date && value !== null ? [{ date, value }] : [];
+    });
   }
 
   /**

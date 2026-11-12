@@ -27,6 +27,11 @@ export type DailyReturnRow = {
    * Wrapped compare growth with money added without storing dollars.
    */
   flowRate?: number;
+  /**
+   * True when the day was rebuilt from the brokerage's estimated value
+   * history instead of a balance Holdfast recorded on the day.
+   */
+  estimated?: boolean;
 };
 
 /** Below this starting value there is nothing meaningful to measure against. */
@@ -110,6 +115,7 @@ export function combineAccounts(
     type Part = { r: number; w: number | null | undefined; f: number };
     const parts: Part[] = [];
     let partial = false;
+    let estimated = false;
     perAccount.forEach((rows, i) => {
       const row = rows[cursor[i]];
       if (row && row.date === date) {
@@ -117,6 +123,7 @@ export function combineAccounts(
         lastWeight[i] = row.weight;
         parts.push({ r: row.dailyReturn, w: row.weight, f: row.flowRate ?? 0 });
         partial ||= row.partial;
+        estimated ||= row.estimated === true;
       } else if (cursor[i] > 0) {
         // Reported before, silent today: flat, and the day is incomplete.
         parts.push({ r: 0, w: lastWeight[i], f: 0 });
@@ -134,6 +141,7 @@ export function combineAccounts(
       dailyReturn: parts.reduce((sum, p) => sum + p.r * share(p), 0),
       flowRate: parts.reduce((sum, p) => sum + p.f * share(p), 0),
       partial,
+      ...(estimated ? { estimated } : {}),
     };
   });
 }
