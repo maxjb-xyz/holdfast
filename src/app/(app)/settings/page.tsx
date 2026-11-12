@@ -14,7 +14,7 @@ import {
   quiet,
   solid,
 } from "@/components/ui";
-import { accountGroups } from "@/lib/full-pages";
+import { accountLine } from "@/lib/full-pages";
 import { DISPLAY_NAME_MAX } from "@/lib/inputs";
 import { DEFAULT_PRIVACY } from "@/lib/model";
 import {
@@ -65,7 +65,7 @@ export default async function SettingsRoute({
     showHoldings:
       user?.showHoldings ?? prefs?.showHoldings ?? DEFAULT_PRIVACY.showHoldings,
   };
-  const groups = accountGroups(await myAccounts(viewer));
+  const lines = (await myAccounts(viewer)).map(accountLine);
   const status = await syncStatus(viewer);
   const needsReconnect = Boolean(user?.pausedSince);
   const back = { back: "/settings" };
@@ -154,35 +154,14 @@ export default async function SettingsRoute({
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-x-14 gap-y-11">
           <section className="flex flex-col gap-2.5">
             <SectionHead title="Linked accounts" aside={status} />
-            {groups.length === 0 ? (
+            {lines.length === 0 ? (
               <p className="m-0 border-t border-b border-faint py-3 text-dim">
                 No accounts yet. They appear here after your first sync with
                 SnapTrade.
               </p>
             ) : (
-              <div className="flex flex-col border-b border-faint">
-                {groups.map((g) => (
-                  <div key={g.institution ?? ""} className="flex flex-col">
-                    {g.institution && (
-                      <div className="flex items-baseline justify-between gap-4 border-t border-rule pt-3.5 pb-2.5">
-                        <span className="text-[15px] font-medium">
-                          {g.institution}
-                        </span>
-                        {g.accounts.every((a) => a.connected) ? (
-                          <span className="flex items-center gap-1.5 font-mono text-[11px] text-grey">
-                            <Icon name="check" size={12} stroke={1.8} />
-                            Connected
-                          </span>
-                        ) : (
-                          <span className="font-mono text-[11px] text-text">
-                            Link dropped
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    <AccountRows accounts={g.accounts} back="/settings" />
-                  </div>
-                ))}
+              <div className="border-b border-faint">
+                <AccountRows accounts={lines} back="/settings" />
               </div>
             )}
             {isUser && (
