@@ -11,6 +11,8 @@ export type Viewer =
   | { kind: "user"; id: string; name: string };
 
 export const DEMO_COOKIE = "hf_demo";
+/** Set once someone has finished or skipped the first run. */
+export const WELCOME_COOKIE = "hf_welcomed";
 
 /** Today's date. Scores are kept per UTC day. */
 export function today(): string {

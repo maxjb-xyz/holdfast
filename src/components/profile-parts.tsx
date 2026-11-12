@@ -1,11 +1,19 @@
+import { ChartHover } from "./chart-hover";
 import {
   domainTicks,
+  hoverStops,
   paddedDomain,
   smoothPath,
   splitByPartial,
   thin,
 } from "@/lib/chart";
-import { monthName, ordinal, quarterLabel, signedPercent } from "@/lib/format";
+import {
+  monthName,
+  ordinal,
+  quarterLabel,
+  shortDate,
+  signedPercent,
+} from "@/lib/format";
 import type { BadgeTile, CareerQuarter } from "@/lib/pages";
 import { addDays, daysInclusive } from "@/lib/quarters";
 import type { Holding } from "@/lib/badges";
@@ -51,133 +59,186 @@ export function CareerChart({
     pt + ((height - pt - pb) * (domain.top - v)) / (domain.top - domain.bottom);
   const ticks = domainTicks(values, 0.03, 3);
   const shown = quarters.slice(-SLOTS);
+  const step = compact ? 4 : 3;
+  const xOf = (q: CareerQuarter, i: number) => {
+    const origin = addDays(q.quarter.start, -1);
+    const span = daysInclusive(q.quarter.start, q.quarter.end);
+    return (date: string) =>
+      pl + i * qw + (qw * (daysInclusive(origin, date) - 1)) / span;
+  };
+  // One reading per drawn point, so the dot always sits on the line.
+  const stops = shown.flatMap((q, i) =>
+    hoverStops(
+      [
+        {
+          key: q.quarter.key,
+          name: quarterLabel(q.quarter.key),
+          color: q.current ? C.you : C.sub,
+          you: q.current,
+          points: thin(q.series, step),
+        },
+      ],
+      xOf(q, i),
+      y,
+      (date) => `${shortDate(date)}, ${date.slice(0, 4)}`,
+      signedPercent,
+    ),
+  );
 
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      width="100%"
-      role="img"
-      aria-label={`Return in each quarter. Every quarter starts again from zero. ${shown
-        .map(
-          (q) =>
-            `${quarterLabel(q.quarter.key)}: ${q.value === null ? "no score" : signedPercent(q.value)}`,
-        )
-        .join(". ")}.`}
-      style={{ display: "block", overflow: "visible" }}
+    <ChartHover
+      width={width}
+      height={height}
+      plot={{
+        x0: pl,
+        x1: width,
+        y0: compact ? 0 : pt - 10,
+        y1: compact ? height : height - pb + 10,
+      }}
+      stops={stops}
     >
-      {!compact &&
-        ticks.map((v) => (
-          <g key={v}>
-            <text
-              x={pl - 12}
-              y={y(v) + 4}
-              textAnchor="end"
-              fontFamily={MONO}
-              fontSize={11}
-              fill={C.grey}
-            >
-              {tick(v)}
-            </text>
-            {v !== 0 && (
-              <path
-                d={`M${pl} ${y(v).toFixed(1)} H${width}`}
-                stroke={C.faint}
-                strokeWidth={1}
-              />
-            )}
-          </g>
-        ))}
-      <path
-        d={`M${pl} ${y(0).toFixed(1)} H${width}`}
-        stroke={C.rule}
-        strokeWidth={1}
-      />
-      {shown.map((q, i) => {
-        const x0 = pl + i * qw;
-        const origin = addDays(q.quarter.start, -1);
-        const span = daysInclusive(q.quarter.start, q.quarter.end);
-        const x = (date: string) =>
-          x0 + (qw * (daysInclusive(origin, date) - 1)) / span;
-        const color = q.current ? C.you : C.sub;
-        const stroke = q.current ? 2.25 : 1.5;
-        const end = q.series[q.series.length - 1];
-        return (
-          <g key={q.quarter.key}>
-            {i > 0 && (
-              <path
-                d={`M${x0.toFixed(1)} ${pt - (compact ? 0 : 10)} V${height - pb + (compact ? 0 : 10)}`}
-                stroke={C.rule}
-                strokeWidth={1}
-              />
-            )}
-            {splitByPartial(thin(q.series, compact ? 4 : 3)).map((run, j) => (
-              <path
-                key={j}
-                d={smoothPath(
-                  run.points.map((p) => [x(p.date), y(p.value)]),
-                  0.2,
-                  4,
-                )}
-                stroke={color}
-                strokeWidth={stroke}
-                fill="none"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                strokeDasharray={run.partial ? "1 5" : undefined}
-              />
-            ))}
-            {end && (
-              <circle
-                cx={x(end.date)}
-                cy={y(end.value)}
-                r={q.current ? 4 : 3}
-                fill={q.paused ? C.bg : color}
-                stroke={color}
-                strokeWidth={1.25}
-              />
-            )}
-            {!compact && (
-              <>
-                <text
-                  x={x0 + 12}
-                  y={pt - 16}
-                  fontFamily={MONO}
-                  fontSize={11}
-                  fill={q.current ? C.you : C.dim}
-                  style={{ letterSpacing: "0.08em" }}
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width="100%"
+        role="img"
+        aria-label={`Return in each quarter. Every quarter starts again from zero. ${shown
+          .map(
+            (q) =>
+              `${quarterLabel(q.quarter.key)}: ${q.value === null ? "no score" : signedPercent(q.value)}`,
+          )
+          .join(". ")}.`}
+        style={{ display: "block", overflow: "visible" }}
+      >
+        {!compact &&
+          ticks.map((v) => (
+            <g key={v}>
+              <text
+                x={pl - 12}
+                y={y(v) + 4}
+                textAnchor="end"
+                fontFamily={MONO}
+                fontSize={11}
+                fill={C.grey}
+              >
+                {tick(v)}
+              </text>
+              {v !== 0 && (
+                <path
+                  d={`M${pl} ${y(v).toFixed(1)} H${width}`}
+                  stroke={C.faint}
+                  strokeWidth={1}
+                />
+              )}
+            </g>
+          ))}
+        <path
+          d={`M${pl} ${y(0).toFixed(1)} H${width}`}
+          stroke={C.rule}
+          strokeWidth={1}
+        />
+        {shown.map((q, i) => {
+          const x0 = pl + i * qw;
+          const x = xOf(q, i);
+          const color = q.current ? C.you : C.sub;
+          const stroke = q.current ? 2.25 : 1.5;
+          const end = q.series[q.series.length - 1];
+          return (
+            <g key={q.quarter.key}>
+              {i > 0 && (
+                <path
+                  d={`M${x0.toFixed(1)} ${pt - (compact ? 0 : 10)} V${height - pb + (compact ? 0 : 10)}`}
+                  stroke={C.rule}
+                  strokeWidth={1}
+                />
+              )}
+              <g
+                className="chart-wipe"
+                style={{ animationDelay: `${i * 140}ms` }}
+              >
+                {splitByPartial(thin(q.series, step)).map((run, j) => (
+                  <path
+                    key={j}
+                    d={smoothPath(
+                      run.points.map((p) => [x(p.date), y(p.value)]),
+                      0.2,
+                      4,
+                    )}
+                    stroke={color}
+                    strokeWidth={stroke}
+                    fill="none"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    strokeDasharray={run.partial ? "1 5" : undefined}
+                  />
+                ))}
+              </g>
+              {end && (
+                <g
+                  className="chart-late"
+                  style={{ "--i": i * 3 } as React.CSSProperties}
                 >
-                  {quarterLabel(q.quarter.key).toUpperCase()}
-                  {q.current ? " · NOW" : ""}
-                </text>
-                <text
-                  x={x0 + 12}
-                  y={height - pb + 34}
-                  fontFamily={MONO}
-                  fontSize={14}
-                  fill={q.current ? C.you : C.text}
-                >
-                  {q.value === null ? "–" : signedPercent(q.value)}
-                </text>
-                <text
-                  x={x0 + 12}
-                  y={height - pb + 52}
-                  fontFamily={SANS}
-                  fontSize={12}
-                  fill={C.dim}
-                >
-                  {q.paused
-                    ? "Paused"
-                    : q.rank === null
-                      ? "Not ranked"
-                      : `${ordinal(q.rank)} of ${q.of}`}
-                  {q.partial ? ", partial" : ""}
-                </text>
-              </>
-            )}
-          </g>
-        );
-      })}
-    </svg>
+                  {q.current && !q.paused && (
+                    <circle
+                      className="chart-pulse"
+                      cx={x(end.date)}
+                      cy={y(end.value)}
+                      r={4}
+                      fill={color}
+                    />
+                  )}
+                  <circle
+                    cx={x(end.date)}
+                    cy={y(end.value)}
+                    r={q.current ? 4 : 3}
+                    fill={q.paused ? C.bg : color}
+                    stroke={color}
+                    strokeWidth={1.25}
+                  />
+                </g>
+              )}
+              {!compact && (
+                <>
+                  <text
+                    x={x0 + 12}
+                    y={pt - 16}
+                    fontFamily={MONO}
+                    fontSize={11}
+                    fill={q.current ? C.you : C.dim}
+                    style={{ letterSpacing: "0.08em" }}
+                  >
+                    {quarterLabel(q.quarter.key).toUpperCase()}
+                    {q.current ? " · NOW" : ""}
+                  </text>
+                  <text
+                    x={x0 + 12}
+                    y={height - pb + 34}
+                    fontFamily={MONO}
+                    fontSize={14}
+                    fill={q.current ? C.you : C.text}
+                  >
+                    {q.value === null ? "–" : signedPercent(q.value)}
+                  </text>
+                  <text
+                    x={x0 + 12}
+                    y={height - pb + 52}
+                    fontFamily={SANS}
+                    fontSize={12}
+                    fill={C.dim}
+                  >
+                    {q.paused
+                      ? "Paused"
+                      : q.rank === null
+                        ? "Not ranked"
+                        : `${ordinal(q.rank)} of ${q.of}`}
+                    {q.partial ? ", partial" : ""}
+                  </text>
+                </>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </ChartHover>
   );
 }
 
@@ -196,11 +257,16 @@ export function Rhythm({
       role="img"
       aria-label={`Months with a buy over the last year: ${count} of 12.`}
     >
-      {months.map((m) => (
-        <span key={m.month} className="flex flex-col items-center gap-2">
+      {months.map((m, i) => (
+        <span
+          key={m.month}
+          className="rise flex flex-col items-center gap-2"
+          style={{ "--i": i * 0.6 } as React.CSSProperties}
+          title={`${monthName(m.month)} ${m.month.slice(0, 4)}: ${m.bought ? "bought" : "no buy"}`}
+        >
           <span
-            className={`box-border rounded-full ${m.bought ? "bg-text" : "border border-grey"}`}
-            style={{ width: size, height: size }}
+            className={`box-border aspect-square w-full rounded-full ${m.bought ? "bg-text" : "border border-grey"}`}
+            style={{ maxWidth: size }}
           />
           <span className="font-mono text-[10px] text-grey">
             {monthName(m.month).charAt(0)}
@@ -272,15 +338,16 @@ export function HoldingBars({
 }) {
   return (
     <div>
-      {holdings.map((h) => (
+      {holdings.map((h, i) => (
         <div
           key={h.ticker}
-          className="grid min-h-9 grid-cols-[48px_minmax(0,1fr)_40px] items-center gap-x-3.5"
+          className="row-hover grid min-h-9 grid-cols-[48px_minmax(0,1fr)_40px] items-center gap-x-3.5"
+          style={{ "--i": i } as React.CSSProperties}
         >
           <span className="font-mono text-[12.5px]">{h.ticker}</span>
           <span className="relative flex h-3 items-center" aria-hidden="true">
             <span
-              className={`h-0.5 ${h.over ? "bg-text" : "bg-grey"}`}
+              className={`bar-grow h-0.5 ${h.over ? "bg-text" : "bg-grey"}`}
               style={{ width: `${Math.min(100, h.share * 250)}%` }}
             />
             <span className="absolute top-0 left-[62.5%] h-3 w-px bg-grey" />

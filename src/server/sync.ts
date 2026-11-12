@@ -84,6 +84,10 @@ async function fetchAll(
     accounts.slice(0, MAX_ACCOUNTS).map(async (a) => {
       const connected =
         a.connectionId === null || !disabled.has(a.connectionId);
+      const institution =
+        a.institution ??
+        (a.connectionId ? brokerages.get(a.connectionId) : null) ??
+        null;
       const [activities, positions, history] = connected
         ? await Promise.all([
             orNull(api.activities(a.id, since)),
@@ -95,13 +99,10 @@ async function fetchAll(
         : [null, null, undefined];
       return {
         id: a.id,
-        label: accountLabel({
-          ...a,
-          institution:
-            a.institution ??
-            (a.connectionId ? brokerages.get(a.connectionId) : null) ??
-            null,
-        }),
+        label: accountLabel({ ...a, institution }),
+        institution,
+        name: a.name ?? a.rawType,
+        lastFour: a.lastFour,
         isPaper: a.isPaper,
         closed: closed(a),
         connected,
@@ -187,36 +188,39 @@ export async function syncUser(
 
   const db = await getDb();
   const ids = fetched.map((a) => a.id);
-  const [owned, clashing, storedFacts, user, heldBadges, snapshots] = await Promise.all([
-    db.select().from(t.accounts).where(eq(t.accounts.userId, userId)),
-    ids.length === 0
-      ? []
-      : db
-          .select({ id: t.accounts.id })
-          .from(t.accounts)
-          .where(and(inArray(t.accounts.id, ids), ne(t.accounts.userId, userId))),
-    db.select().from(t.userFacts).where(eq(t.userFacts.userId, userId)),
-    db
-      .select({ pausedSince: t.users.pausedSince })
-      .from(t.users)
-      .where(eq(t.users.id, userId)),
-    db
-      .select({ key: t.badges.badgeKey })
-      .from(t.badges)
-      .where(eq(t.badges.userId, userId)),
-    db
-      .select()
-      .from(t.balanceSnapshots)
-      .where(
-        inArray(
-          t.balanceSnapshots.accountId,
-          db
+  const [owned, clashing, storedFacts, user, heldBadges, snapshots] =
+    await Promise.all([
+      db.select().from(t.accounts).where(eq(t.accounts.userId, userId)),
+      ids.length === 0
+        ? []
+        : db
             .select({ id: t.accounts.id })
             .from(t.accounts)
-            .where(eq(t.accounts.userId, userId)),
+            .where(
+              and(inArray(t.accounts.id, ids), ne(t.accounts.userId, userId)),
+            ),
+      db.select().from(t.userFacts).where(eq(t.userFacts.userId, userId)),
+      db
+        .select({ pausedSince: t.users.pausedSince })
+        .from(t.users)
+        .where(eq(t.users.id, userId)),
+      db
+        .select({ key: t.badges.badgeKey })
+        .from(t.badges)
+        .where(eq(t.badges.userId, userId)),
+      db
+        .select()
+        .from(t.balanceSnapshots)
+        .where(
+          inArray(
+            t.balanceSnapshots.accountId,
+            db
+              .select({ id: t.accounts.id })
+              .from(t.accounts)
+              .where(eq(t.accounts.userId, userId)),
+          ),
         ),
-      ),
-  ]);
+    ]);
   // The person deleted their data while this sync was reading. Write nothing.
   if (user.length === 0) return "busy";
   // An account id that already belongs to someone else is never taken over.
@@ -263,7 +267,7 @@ export async function syncUser(
 
   const now = new Date();
   const writes = [];
-  for (const group of chunks(plan.accounts, 8)) {
+  for (const group of chunks(plan.accounts, 12)) {
     writes.push(
       db
         .insert(t.accounts)
@@ -272,6 +276,10 @@ export async function syncUser(
             id: a.id,
             userId,
             label: a.label,
+            institution: a.institution?.slice(0, 60) ?? null,
+            name: a.name?.slice(0, 60) ?? null,
+            lastFour: a.lastFour,
+            positionsCount: a.positionsCount,
             counted: a.countedIfNew,
             connected: a.connected,
             lastSyncedOn: a.lastSyncedOn,
@@ -283,6 +291,11 @@ export async function syncUser(
           target: t.accounts.id,
           set: {
             label: sql`excluded.label`,
+            institution: sql`excluded.institution`,
+            name: sql`excluded.name`,
+            lastFour: sql`excluded.last_four`,
+            // A sync that could not read positions keeps the last count.
+            positionsCount: sql`coalesce(excluded.positions_count, ${t.accounts.positionsCount})`,
             connected: sql`excluded.connected`,
             lastSyncedOn: sql`excluded.last_synced_on`,
             historyCheckedOn: sql`excluded.history_checked_on`,

@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { toDateString } from "@/lib/quarters";
 import { getDb } from "@/db";
 import { accounts, users } from "@/db/schema";
+import { cleanDisplayName } from "@/lib/inputs";
 
 export async function setPrivacy(
   userId: string,
@@ -28,7 +29,16 @@ export async function setAccountCounted(
     db
       .update(accounts)
       .set({ counted: on })
-      .where(and(eq(accounts.id, accountId), eq(accounts.userId, userId))),
+      .where(
+        and(
+          eq(accounts.id, accountId),
+          eq(accounts.userId, userId),
+          // The last counted account stays counted, whatever the page showed.
+          on
+            ? undefined
+            : sql`exists (select 1 from accounts o where o.user_id = ${userId} and o.counted = 1 and o.id <> ${accountId})`,
+        ),
+      ),
     // The pause follows the choice at once: counting a dropped account
     // pauses the rank, and leaving the last dropped one out lifts the pause,
     // as long as the SnapTrade connection itself still works.
@@ -46,4 +56,16 @@ export async function setAccountCounted(
       })
       .where(eq(users.id, userId)),
   ]);
+}
+
+/** Changes the name friends see. Returns false when nothing usable was given. */
+export async function setDisplayName(
+  userId: string,
+  rawName: string,
+): Promise<boolean> {
+  const displayName = cleanDisplayName(rawName);
+  if (!displayName) return false;
+  const db = await getDb();
+  await db.update(users).set({ displayName }).where(eq(users.id, userId));
+  return true;
 }

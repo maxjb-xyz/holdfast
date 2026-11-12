@@ -388,6 +388,63 @@ describe("planSync", () => {
     );
     expect(plan.facts?.firstSeen).toEqual({ OLD: "2025-02-01", NEW: TODAY });
   });
+
+  it("stores the parts of each account's name and how many securities it holds", () => {
+    const plan = planSync(
+      input({
+        fetched: [
+          account({
+            institution: "Fidelity",
+            name: "Roth IRA",
+            lastFour: "4471",
+            positions: [
+              { symbol: "VTI", units: 3, price: 250, cashEquivalent: false },
+              { symbol: "SPAXX", units: 90, price: 1, cashEquivalent: true },
+            ],
+          }),
+          account({ id: "a2", positions: null }),
+        ],
+      }),
+    );
+    expect(plan.accounts[0]).toMatchObject({
+      institution: "Fidelity",
+      name: "Roth IRA",
+      lastFour: "4471",
+      positionsCount: 1,
+    });
+    expect(plan.accounts[1]).toMatchObject({ institution: null, positionsCount: null });
+  });
+
+  it("says which accounts hold each holding, and lists left-out accounts apart", () => {
+    const plan = planSync(
+      input({
+        fetched: [
+          account({
+            positions: [{ symbol: "VTI", units: 3, price: 100, cashEquivalent: false, name: "Vanguard Total Stock Market ETF" }],
+          }),
+          account({
+            id: "a2",
+            positions: [
+              { symbol: "VTI", units: 1, price: 100, cashEquivalent: false },
+              { symbol: "AAPL", units: 2, price: 200, cashEquivalent: false },
+            ],
+          }),
+          account({
+            id: "play",
+            positions: [{ symbol: "GME", units: 5, price: 20, cashEquivalent: false }],
+          }),
+        ],
+        storedAccounts: [{ id: "play", counted: false, lastSyncedOn: "2026-11-10" }],
+      }),
+    );
+    expect(plan.facts?.facts.holdings).toEqual([
+      { ticker: "VTI", share: 0.5, change: 0, name: "Vanguard Total Stock Market ETF", accounts: ["a1", "a2"] },
+      { ticker: "AAPL", share: 0.5, change: 0, accounts: ["a2"] },
+    ]);
+    expect(plan.facts?.facts.otherHoldings).toEqual([
+      { ticker: "GME", share: 1, change: 0, accounts: ["play"] },
+    ]);
+  });
 });
 
 describe("planSync backfill", () => {

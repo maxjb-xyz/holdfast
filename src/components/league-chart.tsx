@@ -1,5 +1,7 @@
+import { ChartHover } from "./chart-hover";
 import {
   domainTicks,
+  hoverStops,
   paddedDomain,
   smoothPath,
   splitByPartial,
@@ -76,7 +78,7 @@ function Lines({
     ...rows.filter((r) => r.chart.length > 0).map((r) => x(r.chart[0].date)),
   );
   return (
-    <>
+    <g className="chart-wipe">
       {ordered.map((row) => {
         if (row.chart.length === 0) return null;
         const color = row.isYou ? C.you : ghost ? C.rule : C.grey;
@@ -84,7 +86,7 @@ function Lines({
         const first = row.chart[0];
         const last = row.chart[row.chart.length - 1];
         return (
-          <g key={row.userId}>
+          <g key={row.userId} data-line={row.userId}>
             {splitByPartial(row.chart).map((run, i) => (
               <path
                 key={i}
@@ -121,7 +123,27 @@ function Lines({
           </g>
         );
       })}
-    </>
+    </g>
+  );
+}
+
+function stopsFor(
+  rows: LeaguePageRow[],
+  x: (date: string) => number,
+  y: (v: number) => number,
+) {
+  return hoverStops(
+    rows.map((row) => ({
+      key: row.userId,
+      name: short(row.shownName),
+      color: row.isYou ? C.you : C.sub,
+      you: row.isYou,
+      points: row.chart,
+    })),
+    x,
+    y,
+    shortDate,
+    signedPercent,
   );
 }
 
@@ -187,219 +209,249 @@ export function LeagueChart({
       : "7D";
 
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      width="100%"
-      role="img"
-      aria-label="Each member's return up to today, with the standings listed beside the line ends"
-      style={{ display: "block", overflow: "visible" }}
+    <ChartHover
+      width={W}
+      height={H}
+      plot={{ x0: PL, x1: todayX, y0: PT - 6, y1: axisY }}
+      stops={stopsFor(page.rows, x, y)}
     >
-      {ticks.map((v) => (
-        <g key={v}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        role="img"
+        aria-label="Each member's return up to today, with the standings listed beside the line ends"
+        style={{ display: "block", overflow: "visible" }}
+      >
+        {ticks.map((v) => (
+          <g key={v}>
+            <path
+              d={`M${PL} ${y(v).toFixed(1)} H${todayX.toFixed(1)}`}
+              stroke={v === 0 ? C.rule : C.faint}
+              strokeWidth={1}
+            />
+            <text
+              x={PL - 12}
+              y={y(v) + 4}
+              textAnchor="end"
+              fontFamily={MONO}
+              fontSize={11}
+              fill={C.grey}
+            >
+              {percentTick(v)}
+            </text>
+          </g>
+        ))}
+        {tickDays.map((d) => (
           <path
-            d={`M${PL} ${y(v).toFixed(1)} H${todayX.toFixed(1)}`}
-            stroke={v === 0 ? C.rule : C.faint}
+            key={d}
+            d={`M${xi(d).toFixed(1)} ${axisY} v5`}
+            stroke={d > f.today ? C.rule : C.grey}
             strokeWidth={1}
           />
+        ))}
+        {labels.map((l) => (
           <text
-            x={PL - 12}
-            y={y(v) + 4}
+            key={l.i}
+            x={xi(l.i) + 1}
+            y={H - PB + 30}
+            fontFamily={MONO}
+            fontSize={11}
+            fill={l.i <= f.today ? C.dim : C.grey}
+            style={{ letterSpacing: "0.08em" }}
+          >
+            {l.text}
+          </text>
+        ))}
+        {proportional && f.total - f.today > 10 && (
+          <text
+            x={W}
+            y={H - PB + 30}
             textAnchor="end"
             fontFamily={MONO}
             fontSize={11}
             fill={C.grey}
+            style={{ letterSpacing: "0.08em" }}
           >
-            {percentTick(v)}
+            {shortDate(page.quarter.end).toUpperCase()}
           </text>
-        </g>
-      ))}
-      {tickDays.map((d) => (
+        )}
+        {proportional && (
+          <path d={`M${PL} ${axisY} H${W}`} stroke={C.rule} strokeWidth={1} />
+        )}
         <path
-          key={d}
-          d={`M${xi(d).toFixed(1)} ${axisY} v5`}
-          stroke={d > f.today ? C.rule : C.grey}
+          d={`M${PL} ${axisY} H${todayX.toFixed(1)}`}
+          stroke={C.grey}
           strokeWidth={1}
         />
-      ))}
-      {labels.map((l) => (
+        <path
+          d={`M${todayX.toFixed(1)} ${PT - 6} V${axisY}`}
+          stroke={C.grey}
+          strokeWidth={1}
+          strokeDasharray="2 4"
+        />
         <text
-          key={l.i}
-          x={xi(l.i) + 1}
-          y={H - PB + 30}
+          x={todayX}
+          y={PT - 14}
+          textAnchor="middle"
           fontFamily={MONO}
           fontSize={11}
-          fill={l.i <= f.today ? C.dim : C.grey}
+          fill={C.sub}
           style={{ letterSpacing: "0.08em" }}
         >
-          {l.text}
+          {shortDate(page.asOf).toUpperCase()}
         </text>
-      ))}
-      {proportional && f.total - f.today > 10 && (
+
+        <Lines
+          rows={page.rows}
+          x={x}
+          y={y}
+          todayX={todayX}
+          youWidth={2.25}
+          otherWidth={1.25}
+        />
+
         <text
-          x={W}
-          y={H - PB + 30}
+          x={C7}
+          y={PT - 14}
           textAnchor="end"
           fontFamily={MONO}
           fontSize={11}
           fill={C.grey}
           style={{ letterSpacing: "0.08em" }}
         >
-          {shortDate(page.quarter.end).toUpperCase()}
+          {f.quarter ? "7D" : "QUARTER"}
         </text>
-      )}
-      {proportional && (
-        <path d={`M${PL} ${axisY} H${W}`} stroke={C.rule} strokeWidth={1} />
-      )}
-      <path
-        d={`M${PL} ${axisY} H${todayX.toFixed(1)}`}
-        stroke={C.grey}
-        strokeWidth={1}
-      />
-      <path
-        d={`M${todayX.toFixed(1)} ${PT - 6} V${axisY}`}
-        stroke={C.grey}
-        strokeWidth={1}
-        strokeDasharray="2 4"
-      />
-      <text
-        x={todayX}
-        y={PT - 14}
-        textAnchor="middle"
-        fontFamily={MONO}
-        fontSize={11}
-        fill={C.sub}
-        style={{ letterSpacing: "0.08em" }}
-      >
-        {shortDate(page.asOf).toUpperCase()}
-      </text>
-
-      <Lines
-        rows={page.rows}
-        x={x}
-        y={y}
-        todayX={todayX}
-        youWidth={2.25}
-        otherWidth={1.25}
-      />
-
-      <text
-        x={C7}
-        y={PT - 14}
-        textAnchor="end"
-        fontFamily={MONO}
-        fontSize={11}
-        fill={C.grey}
-        style={{ letterSpacing: "0.08em" }}
-      >
-        {f.quarter ? "7D" : "QUARTER"}
-      </text>
-      <text
-        x={W}
-        y={PT - 14}
-        textAnchor="end"
-        fontFamily={MONO}
-        fontSize={11}
-        fill={C.grey}
-        style={{ letterSpacing: "0.08em" }}
-      >
-        {rangeLabel}
-      </text>
-      {page.rows.map((row, i) => {
-        const ry = firstRowY + i * step;
-        const end = row.chart[row.chart.length - 1];
-        const ey = end ? y(end.value) : y(0);
-        const color = row.isYou ? C.you : row.paused ? C.dim : C.text;
-        const lineColor = row.isYou ? C.you : C.grey;
-        const mid = (todayX + rx) / 2;
-        // The quieter middle column: 7 day change, or the quarter in a window view.
-        const side = f.quarter
-          ? row.paused
-            ? null
-            : row.week.value
-          : row.score.value;
-        return (
-          <g key={row.userId}>
-            <path
-              d={`M${todayX.toFixed(1)} ${ey.toFixed(1)} C${mid.toFixed(1)} ${ey.toFixed(1)} ${mid.toFixed(1)} ${(ry - 5).toFixed(1)} ${(rx - 12).toFixed(1)} ${(ry - 5).toFixed(1)}`}
-              stroke={lineColor}
-              strokeWidth={1}
-              fill="none"
-              opacity={row.isYou ? 1 : 0.5}
-            />
-            <circle
-              cx={todayX}
-              cy={ey}
-              r={row.isYou ? 4 : 3}
-              fill={row.paused ? C.bg : lineColor}
-              stroke={lineColor}
-              strokeWidth={1.25}
-            />
-            <text x={rx} y={ry} fontFamily={MONO} fontSize={12} fill={C.dim}>
-              {row.rank ?? "–"}
-            </text>
-            {row.move !== null && row.move > 0 && (
-              <path d={`M${rx + 15} ${ry - 3} l3.5 -5 l3.5 5z`} fill={C.sub}>
-                <title>{`Up ${row.move} this week`}</title>
-              </path>
-            )}
-            {row.move !== null && row.move < 0 && (
-              <path d={`M${rx + 15} ${ry - 8} l3.5 5 l3.5 -5z`} fill={C.grey}>
-                <title>{`Down ${-row.move} this week`}</title>
-              </path>
-            )}
-            <a
-              href={profileHref(row.userId)}
-              aria-label={`${row.shownName}, open profile`}
+        <text
+          x={W}
+          y={PT - 14}
+          textAnchor="end"
+          fontFamily={MONO}
+          fontSize={11}
+          fill={C.grey}
+          style={{ letterSpacing: "0.08em" }}
+        >
+          {rangeLabel}
+        </text>
+        {page.rows.map((row, i) => {
+          const ry = firstRowY + i * step;
+          const end = row.chart[row.chart.length - 1];
+          const ey = end ? y(end.value) : y(0);
+          const color = row.isYou ? C.you : row.paused ? C.dim : C.text;
+          const lineColor = row.isYou ? C.you : C.grey;
+          const mid = (todayX + rx) / 2;
+          // The quieter middle column: 7 day change, or the quarter in a window view.
+          const side = f.quarter
+            ? row.paused
+              ? null
+              : row.week.value
+            : row.score.value;
+          return (
+            <g
+              key={row.userId}
+              data-series={row.userId}
+              data-line={row.userId}
+              className="chart-late"
+              style={{ "--i": i } as React.CSSProperties}
             >
-              <text
-                x={rx + 36}
-                y={ry}
-                fontFamily={SANS}
-                fontSize={16}
-                fontWeight={500}
-                fill={color}
-              >
-                {short(row.shownName)}
+              {/* An unseen target, so the whole row answers to the pointer. */}
+              <rect
+                x={todayX + 8}
+                y={ry - step / 2 - 4}
+                width={W - todayX - 8}
+                height={step}
+                fill="transparent"
+              />
+              {row.isYou && !row.paused && (
+                <circle
+                  className="chart-pulse"
+                  cx={todayX}
+                  cy={ey}
+                  r={4}
+                  fill={C.you}
+                />
+              )}
+              <path
+                d={`M${todayX.toFixed(1)} ${ey.toFixed(1)} C${mid.toFixed(1)} ${ey.toFixed(1)} ${mid.toFixed(1)} ${(ry - 5).toFixed(1)} ${(rx - 12).toFixed(1)} ${(ry - 5).toFixed(1)}`}
+                stroke={lineColor}
+                strokeWidth={1}
+                fill="none"
+                opacity={row.isYou ? 1 : 0.5}
+              />
+              <circle
+                cx={todayX}
+                cy={ey}
+                r={row.isYou ? 4 : 3}
+                fill={row.paused ? C.bg : lineColor}
+                stroke={lineColor}
+                strokeWidth={1.25}
+              />
+              <text x={rx} y={ry} fontFamily={MONO} fontSize={12} fill={C.dim}>
+                {row.rank ?? "–"}
               </text>
-            </a>
-            {row.note && (
-              <text
-                x={rx + 36}
-                y={ry + 18}
-                fontFamily={SANS}
-                fontSize={12}
-                fill={row.paused ? C.dim : C.grey}
+              {row.move !== null && row.move > 0 && (
+                <path d={`M${rx + 15} ${ry - 3} l3.5 -5 l3.5 5z`} fill={C.sub}>
+                  <title>{`Up ${row.move} this week`}</title>
+                </path>
+              )}
+              {row.move !== null && row.move < 0 && (
+                <path d={`M${rx + 15} ${ry - 8} l3.5 5 l3.5 -5z`} fill={C.grey}>
+                  <title>{`Down ${-row.move} this week`}</title>
+                </path>
+              )}
+              <a
+                href={profileHref(row.userId)}
+                aria-label={`${row.shownName}, open profile`}
               >
-                {row.note}
-              </text>
-            )}
-            {side !== null && (
+                <text
+                  x={rx + 36}
+                  y={ry}
+                  fontFamily={SANS}
+                  fontSize={16}
+                  fontWeight={500}
+                  fill={color}
+                >
+                  {short(row.shownName)}
+                </text>
+              </a>
+              {row.note && (
+                <text
+                  x={rx + 36}
+                  y={ry + 18}
+                  fontFamily={SANS}
+                  fontSize={12}
+                  fill={row.paused ? C.dim : C.grey}
+                >
+                  {row.note}
+                </text>
+              )}
+              {side !== null && (
+                <text
+                  x={C7}
+                  y={ry}
+                  textAnchor="end"
+                  fontFamily={MONO}
+                  fontSize={12.5}
+                  fill={C.dim}
+                >
+                  {signedNumber(side)}
+                </text>
+              )}
               <text
-                x={C7}
+                x={W}
                 y={ry}
                 textAnchor="end"
                 fontFamily={MONO}
-                fontSize={12.5}
-                fill={C.dim}
+                fontSize={15}
+                fill={color}
               >
-                {signedNumber(side)}
+                {row.rangeValue === null ? "–" : signedPercent(row.rangeValue)}
               </text>
-            )}
-            <text
-              x={W}
-              y={ry}
-              textAnchor="end"
-              fontFamily={MONO}
-              fontSize={15}
-              fill={color}
-            >
-              {row.rangeValue === null ? "–" : signedPercent(row.rangeValue)}
-            </text>
-          </g>
-        );
-      })}
-      <desc>{`Lines show the ${rangeLabel.toLowerCase()} view.`}</desc>
-    </svg>
+            </g>
+          );
+        })}
+        <desc>{`Lines show the ${rangeLabel.toLowerCase()} view.`}</desc>
+      </svg>
+    </ChartHover>
   );
 }
 
@@ -411,6 +463,7 @@ export function MiniChart({
   width = 390,
   height = 150,
   ghost = false,
+  hover = false,
   label = "Returns across the quarter so far",
 }: {
   rows: LeaguePageRow[];
@@ -419,6 +472,8 @@ export function MiniChart({
   width?: number;
   height?: number;
   ghost?: boolean;
+  /** Lets the pointer read each day's values. Off for decorative charts. */
+  hover?: boolean;
   label?: string;
 }) {
   const days = Math.max(1, daysInclusive(origin, asOf) - 1);
@@ -430,7 +485,7 @@ export function MiniChart({
     6 + ((height - 12) * (domain.top - v)) / (domain.top - domain.bottom);
   const you = rows.find((r) => r.isYou);
   const end = you?.chart[you.chart.length - 1];
-  return (
+  const chart = (
     <svg
       viewBox={`0 0 ${width} ${height}`}
       width="100%"
@@ -453,8 +508,30 @@ export function MiniChart({
         ghost={ghost}
       />
       {end && !you?.paused && (
-        <circle cx={x(end.date)} cy={y(end.value)} r={4} fill={C.you} />
+        <g className="chart-late">
+          {hover && (
+            <circle
+              className="chart-pulse"
+              cx={x(end.date)}
+              cy={y(end.value)}
+              r={4}
+              fill={C.you}
+            />
+          )}
+          <circle cx={x(end.date)} cy={y(end.value)} r={4} fill={C.you} />
+        </g>
       )}
     </svg>
+  );
+  if (!hover) return chart;
+  return (
+    <ChartHover
+      width={width}
+      height={height}
+      plot={{ x0: 0, x1: width - 8, y0: 0, y1: height }}
+      stops={stopsFor(rows, x, y)}
+    >
+      {chart}
+    </ChartHover>
   );
 }

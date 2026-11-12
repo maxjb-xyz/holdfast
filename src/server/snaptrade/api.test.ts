@@ -105,7 +105,11 @@ describe("SnapTradeApi.connections", () => {
   it("reads the brokerage behind each connection", async () => {
     const connections = await api({
       "/authorizations": [
-        { id: "c1", disabled: false, brokerage: { name: "ROBINHOOD", display_name: "Robinhood" } },
+        {
+          id: "c1",
+          disabled: false,
+          brokerage: { name: "ROBINHOOD", display_name: "Robinhood" },
+        },
         { id: "c2", disabled: true, brokerage: { name: "Fidelity" } },
         { id: "c3" },
       ],
@@ -123,30 +127,110 @@ describe("SnapTradeApi.positions", () => {
     const positions = await api({
       "/accounts/a1/positions/all": {
         results: [
-          { instrument: { kind: "stock", id: "1", symbol: "AAPL", raw_symbol: "AAPL" }, units: "10", price: "190.5", cash_equivalent: false },
-          { instrument: { kind: "etf", id: "2", symbol: "VAB.TO", raw_symbol: "VAB" }, units: "3.5", price: "22", cash_equivalent: false },
-          { instrument: { kind: "mutualfund", id: "3", symbol: "SPAXX", raw_symbol: "SPAXX" }, units: "400", price: "1", cash_equivalent: true },
-          { instrument: { kind: "option", id: "4", symbol: "AAPL  261218C00240000", multiplier: "100" }, units: "1", price: "4.2", cash_equivalent: false },
-          { instrument: { kind: "cash", code: "USD" }, units: "250", price: "1", cash_equivalent: true },
-          { instrument: { kind: "stock", id: "5", symbol: "NOPE", raw_symbol: "NOPE" }, units: "2", price: null, cash_equivalent: false },
+          {
+            instrument: {
+              kind: "stock",
+              id: "1",
+              symbol: "AAPL",
+              raw_symbol: "AAPL",
+              description: "Apple Inc.",
+            },
+            units: "10",
+            price: "190.5",
+            cash_equivalent: false,
+          },
+          {
+            instrument: {
+              kind: "etf",
+              id: "2",
+              symbol: "VAB.TO",
+              raw_symbol: "VAB",
+            },
+            units: "3.5",
+            price: "22",
+            cash_equivalent: false,
+          },
+          {
+            instrument: {
+              kind: "mutualfund",
+              id: "3",
+              symbol: "SPAXX",
+              raw_symbol: "SPAXX",
+            },
+            units: "400",
+            price: "1",
+            cash_equivalent: true,
+          },
+          {
+            instrument: {
+              kind: "option",
+              id: "4",
+              symbol: "AAPL  261218C00240000",
+              multiplier: "100",
+            },
+            units: "1",
+            price: "4.2",
+            cash_equivalent: false,
+          },
+          {
+            instrument: { kind: "cash", code: "USD" },
+            units: "250",
+            price: "1",
+            cash_equivalent: true,
+          },
+          {
+            instrument: {
+              kind: "stock",
+              id: "5",
+              symbol: "NOPE",
+              raw_symbol: "NOPE",
+            },
+            units: "2",
+            price: null,
+            cash_equivalent: false,
+          },
         ],
         data_freshness: { as_of: "2026-11-12T06:00:00Z" },
       },
     }).positions("a1");
     expect(positions).toEqual([
-      { symbol: "AAPL", units: 10, price: 190.5, cashEquivalent: false },
-      { symbol: "VAB", units: 3.5, price: 22, cashEquivalent: false },
-      { symbol: "SPAXX", units: 400, price: 1, cashEquivalent: true },
+      {
+        symbol: "AAPL",
+        units: 10,
+        price: 190.5,
+        cashEquivalent: false,
+        name: "Apple Inc.",
+      },
+      {
+        symbol: "VAB",
+        units: 3.5,
+        price: 22,
+        cashEquivalent: false,
+        name: null,
+      },
+      {
+        symbol: "SPAXX",
+        units: 400,
+        price: 1,
+        cashEquivalent: true,
+        name: null,
+      },
     ]);
   });
 
   it("still reads the older nested shape", async () => {
     const positions = await api({
       "/accounts/a1/positions/all": [
-        { symbol: { symbol: { symbol: "VAB.TO", raw_symbol: "VAB" } }, units: 4, price: 22 },
+        {
+          symbol: { symbol: { symbol: "VAB.TO", raw_symbol: "VAB" } },
+          units: 4,
+          price: 22,
+        },
       ],
     }).positions("a1");
-    expect(positions).toEqual([{ symbol: "VAB", units: 4, price: 22, cashEquivalent: false }]);
+    expect(positions).toEqual([
+      { symbol: "VAB", units: 4, price: 22, cashEquivalent: false, name: null },
+    ]);
   });
 });
 
@@ -155,15 +239,66 @@ describe("SnapTradeApi.activities", () => {
     const activities = await api({
       "/accounts/a1/activities": {
         data: [
-          { id: "t1", type: "buy", trade_date: "2026-11-03T14:30:00Z", settlement_date: "2026-11-04T00:00:00Z", amount: -381, units: 2, price: 190.5, symbol: { symbol: "AAPL", raw_symbol: "AAPL" } },
-          { id: "t2", type: "CONTRIBUTION", trade_date: null, settlement_date: "2026-11-01T00:00:00Z", amount: 500, units: 0, price: 0, symbol: null },
+          {
+            id: "t1",
+            type: "buy",
+            trade_date: "2026-11-03T14:30:00Z",
+            settlement_date: "2026-11-04T00:00:00Z",
+            amount: -381,
+            units: 2,
+            price: 190.5,
+            symbol: { symbol: "AAPL", raw_symbol: "AAPL" },
+          },
+          {
+            id: "t3",
+            type: "BUY",
+            trade_date: "2026-11-02T14:30:00Z",
+            settlement_date: "2026-11-03T00:00:00Z",
+            amount: -420,
+            units: 1,
+            price: 4.2,
+            symbol: null,
+            option_symbol: { id: "o1", ticker: "AAPL  261218C00240000" },
+          },
+          {
+            id: "t2",
+            type: "CONTRIBUTION",
+            trade_date: null,
+            settlement_date: "2026-11-01T00:00:00Z",
+            amount: 500,
+            units: 0,
+            price: 0,
+            symbol: null,
+          },
         ],
-        pagination: { offset: 0, limit: 1000, total: 2 },
+        pagination: { offset: 0, limit: 1000, total: 3 },
       },
     }).activities("a1", "2024-09-01");
     expect(activities).toEqual([
-      { type: "BUY", date: "2026-11-03", amount: -381, units: 2, price: 190.5, symbol: "AAPL" },
-      { type: "CONTRIBUTION", date: "2026-11-01", amount: 500, units: 0, price: 0, symbol: null },
+      {
+        type: "BUY",
+        date: "2026-11-03",
+        amount: -381,
+        units: 2,
+        price: 190.5,
+        symbol: "AAPL",
+      },
+      {
+        type: "OPTION_BUY",
+        date: "2026-11-02",
+        amount: -420,
+        units: 1,
+        price: 4.2,
+        symbol: null,
+      },
+      {
+        type: "CONTRIBUTION",
+        date: "2026-11-01",
+        amount: 500,
+        units: 0,
+        price: 0,
+        symbol: null,
+      },
     ]);
   });
 });

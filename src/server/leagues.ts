@@ -101,7 +101,9 @@ async function loadPlayers(
           db
             .select({ id: accounts.id })
             .from(accounts)
-            .where(and(inArray(accounts.userId, ids), eq(accounts.counted, true))),
+            .where(
+              and(inArray(accounts.userId, ids), eq(accounts.counted, true)),
+            ),
         ),
         gte(dailyReturns.date, historyStart(day)),
       ),
@@ -156,6 +158,10 @@ async function loadPlayers(
       accounts: mine.map((a) => ({
         id: a.id,
         label: a.label,
+        institution: a.institution,
+        name: a.name,
+        lastFour: a.lastFour,
+        positions: a.positionsCount,
         counted: a.counted,
         connected: a.connected,
       })),

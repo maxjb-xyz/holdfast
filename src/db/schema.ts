@@ -78,6 +78,13 @@ export const accounts = sqliteTable("accounts", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   label: text("label").notNull(), // shown only to the owner
+  // The parts the label is built from, for screens that lay them out apart.
+  // Null on rows that have not synced since these were added.
+  institution: text("institution"), // the brokerage, such as "Fidelity"
+  name: text("name"), // the account's own name or type, such as "Roth IRA"
+  lastFour: text("last_four"), // last four characters of the account number
+  // How many securities the account held at the last sync that could read them.
+  positionsCount: integer("positions_count"),
   // Whether this account counts toward league scores. The owner chooses.
   counted: integer("counted", { mode: "boolean" }).notNull().default(true),
   // False when the brokerage connection behind the account is disabled.

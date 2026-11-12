@@ -92,6 +92,110 @@
   }
 }
 
+/*
+ * Motion. Everything here plays once on arrival and ends in the element's
+ * normal state, so with animation off the page is simply already settled.
+ */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes wipe {
+  from {
+    clip-path: inset(-12px 100% -12px -12px);
+  }
+  to {
+    clip-path: inset(-12px);
+  }
+}
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes pulse {
+  from {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  70%,
+  to {
+    opacity: 0;
+    transform: scale(3.4);
+  }
+}
+
+@layer components {
+  /* A block settling into place. Set --i to stagger siblings. */
+  .rise {
+    animation: rise 520ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 55ms);
+  }
+  /* Pages that set no motion of their own still settle in, block by block. */
+  main:not(:has(.rise)) > * {
+    animation: rise 520ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  }
+  main:not(:has(.rise)) > :nth-child(2) {
+    animation-delay: 70ms;
+  }
+  main:not(:has(.rise)) > :nth-child(3) {
+    animation-delay: 140ms;
+  }
+  main:not(:has(.rise)) > :nth-child(n + 4) {
+    animation-delay: 210ms;
+  }
+  /* Chart lines drawing in from the left. */
+  .chart-wipe {
+    animation: wipe 900ms cubic-bezier(0.3, 0.6, 0.2, 1) backwards;
+  }
+  /* What sits at the line ends, arriving once the lines have. */
+  .chart-late {
+    animation: fade 420ms ease-out backwards;
+    animation-delay: calc(620ms + var(--i, 0) * 45ms);
+  }
+  .chart-pulse {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: pulse 2.8s ease-out 1.4s infinite backwards;
+    pointer-events: none;
+  }
+  .chart-hover {
+    touch-action: pan-y;
+  }
+  .chart-hover [data-line] {
+    transition: opacity 160ms ease;
+  }
+  .chart-hover [data-series] {
+    cursor: default;
+  }
+  .chart-tip {
+    animation: fade 120ms ease-out;
+    transition:
+      left 70ms linear,
+      top 70ms linear;
+  }
+  /* A bar filling from its left edge. */
+  .bar-grow {
+    transform-origin: left center;
+    animation: grow 700ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(120ms + var(--i, 0) * 60ms);
+  }
+  /* A row that answers to the pointer without becoming a card. */
+  .row-hover {
+    transition: color 120ms ease;
+  }
+  .row-hover:hover {
+    color: #ffffff;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;

@@ -1,0 +1,72 @@
+/* Small motion for the first-run, league and holdings pages. */
+@keyframes hf-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes hf-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+@keyframes hf-pulse {
+  from {
+    transform: scale(0.6);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+@keyframes hf-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* Content settling into place as a page opens. */
+.hf-rise {
+  animation: hf-rise 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+/* Rows of a list arrive one after another. Set --i on each row. */
+.hf-row {
+  animation: hf-rise 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 35ms);
+}
+/* A chart line drawing itself. Needs pathLength="1" on the path. */
+.hf-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: hf-draw 900ms cubic-bezier(0.3, 0.6, 0.2, 1) both;
+}
+/* The ring around the point where a line starts. */
+.hf-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: hf-pulse 2.4s ease-out infinite;
+}
+/* A bar growing from its left edge. */
+.hf-grow {
+  transform-origin: left center;
+  animation: hf-grow 600ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 35ms);
+}
+/* A table row that lights up under the pointer. */
+.hf-hover {
+  transition: background-color 120ms ease;
+}
+.hf-hover:hover {
+  background-color: rgb(255 255 255 / 0.025);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-rise,
+  .hf-row,
+  .hf-draw,
+  .hf-pulse,
+  .hf-grow {
+    animation: none;
+  }
+}

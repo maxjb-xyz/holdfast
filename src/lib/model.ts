@@ -33,6 +33,14 @@ export type EarnedBadge = {
 export type LinkedAccount = {
   id: string;
   label: string;
+  /** The brokerage, such as "Fidelity". Null until the account next syncs. */
+  institution?: string | null;
+  /** The account's own name or type, such as "Roth IRA". */
+  name?: string | null;
+  /** The last four characters of the account number. */
+  lastFour?: string | null;
+  /** How many securities it held when its positions were last read. */
+  positions?: number | null;
   /** Whether this account counts toward league scores. */
   counted: boolean;
   /** False when the brokerage connection behind it is broken. */

@@ -94,9 +94,21 @@ export type LeaguePage = {
   you: LeaguePageRow | null;
   /** "3rd of 6", "Paused" or "Not ranked yet". */
   standing: string;
-  stats: { label: string; value: string; quiet?: boolean }[];
+  stats: {
+    label: string;
+    value: string;
+    quiet?: boolean;
+    /** A short run of values to draw beside the figure. */
+    spark?: number[];
+  }[];
   feed: FeedItem[];
-  closest: { name: string; badge: string; remaining: string }[];
+  closest: {
+    name: string;
+    badge: string;
+    remaining: string;
+    /** 0 to 1, how far along the member is. */
+    closeness: number;
+  }[];
   lastQuarter: {
     quarter: Quarter;
     top: { place: string; name: string; value: string; isYou: boolean }[];
@@ -290,7 +302,11 @@ export function leaguePage(
   const stats: LeaguePage["stats"] = [];
   if (you && youPlayer) {
     if (you.week.value !== null && !you.paused) {
-      stats.push({ label: "This week", value: signedPercent(you.week.value) });
+      stats.push({
+        label: "This week",
+        value: signedPercent(you.week.value),
+        spark: you.series.slice(-8).map((p) => p.value),
+      });
     }
     if (you.rank !== null && you.score.value !== null) {
       const ranked = rows
@@ -359,6 +375,7 @@ export function leaguePage(
       name: member.userId === viewerId ? "You" : firstName(member.name),
       badge: BADGES[(next as { key: BadgeKey }).key].name,
       remaining: (next as { remaining: string }).remaining,
+      closeness: (next as { closeness: number }).closeness,
     }));
 
   const last = previousQuarter(quarter);

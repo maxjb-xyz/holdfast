@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./motion.css";
 
 export const metadata: Metadata = {
   title: { default: "Holdfast", template: "%s · Holdfast" },

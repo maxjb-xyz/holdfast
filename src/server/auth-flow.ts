@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gt, lt } from "drizzle-orm";
+import { and, eq, gt, lt, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { oauthStates, sessions, users } from "@/db/schema";
 import { safeReturnTo } from "@/lib/inputs";
@@ -16,6 +16,7 @@ import { saveTokens } from "./snaptrade/token-store";
 /** The cookie that ties a sign-in attempt to the browser that started it. */
 export const OAUTH_COOKIE = "hf_oauth";
 export const ATTEMPT_MINUTES = 10;
+const PLACEHOLDER_NAME = "Investor";
 
 /** Starts a sign-in attempt and returns where to send the browser. */
 export async function beginSignIn(
@@ -83,13 +84,19 @@ export async function completeSignIn(
     nonce: attempt.nonce,
   });
 
-  const displayName = (identity.name ?? "Investor").slice(0, 40);
+  const displayName = (identity.name ?? PLACEHOLDER_NAME).slice(0, 40);
   await db
     .insert(users)
     .values({ id: identity.sub, displayName })
     .onConflictDoUpdate({
       target: users.id,
-      set: identity.name ? { displayName } : { id: identity.sub },
+      // A later sign-in keeps the name the person has, since they may have
+      // changed it in Settings. Only the placeholder is replaced.
+      set: identity.name
+        ? {
+            displayName: sql`case when ${users.displayName} = ${PLACEHOLDER_NAME} then ${displayName} else ${users.displayName} end`,
+          }
+        : { id: identity.sub },
     });
   await saveTokens(identity.sub, tokens, config.encryptionKey);
   return { userId: identity.sub, returnTo: safeReturnTo(attempt.returnTo) };

@@ -125,15 +125,27 @@ function Settings({ page, isDemo }: { page: ProfilePage; isDemo: boolean }) {
         </form>
         {!isDemo && (
           <Link
-            href="/leagues#data"
+            href="/settings"
             className="hover-text flex min-h-11 items-center gap-2 text-dim"
           >
-            Leave leagues or delete your data
+            All settings and your data
             <Icon name="right" size={14} />
           </Link>
         )}
       </section>
     </>
+  );
+}
+
+function More({ href, children }: { href: string; children: string }) {
+  return (
+    <Link
+      href={href}
+      className="hover-text -my-2 flex min-h-9 items-center gap-1.5 self-start text-[13px] text-dim"
+    >
+      {children}
+      <Icon name="arrow" size={14} />
+    </Link>
   );
 }
 
@@ -194,8 +206,8 @@ export function ProfileView({
       />
 
       {/* Desktop */}
-      <main className="mx-auto hidden w-full max-w-[1440px] flex-1 items-start gap-x-14 px-10 pt-6 pb-10 lg:flex">
-        <section className="flex min-w-0 flex-[1_1_250px] flex-col gap-8">
+      <main className="mx-auto hidden w-full max-w-[1440px] flex-1 flex-wrap content-start items-start gap-x-14 gap-y-12 px-10 pt-6 pb-10 lg:flex xl:flex-nowrap">
+        <section className="rise flex min-w-0 flex-[1_1_250px] flex-col gap-8">
           {!page.isSelf && (
             <Link
               href={backHref}
@@ -229,7 +241,10 @@ export function ProfileView({
         </section>
 
         <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-11">
-          <section className="flex flex-col gap-[18px]">
+          <section
+            className="rise flex flex-col gap-[18px]"
+            style={{ "--i": 1.5 } as React.CSSProperties}
+          >
             <SectionHead
               title="Return by quarter"
               aside="Each quarter starts at 0%"
@@ -240,7 +255,10 @@ export function ProfileView({
               <Private what="Past returns" />
             )}
           </section>
-          <div className="grid grid-cols-3 gap-x-12 gap-y-10">
+          <div
+            className="rise grid grid-cols-3 gap-x-12 gap-y-10"
+            style={{ "--i": 4 } as React.CSSProperties}
+          >
             <section className="flex flex-col gap-[18px]">
               <SectionHead
                 title="Buying rhythm"
@@ -283,6 +301,7 @@ export function ProfileView({
                       {page.holdingsNote ? `${page.holdingsNote} ` : ""}Mark at
                       25%, the Well Spread limit.
                     </span>
+                    <More href="/holdings">All holdings</More>
                   </>
                 ) : (
                   <p className="m-0 text-xs text-grey">
@@ -296,7 +315,10 @@ export function ProfileView({
           </div>
         </div>
 
-        <aside className="flex min-w-0 flex-[1_1_290px] flex-col gap-9">
+        <aside
+          className="rise grid min-w-0 basis-full grid-cols-3 items-start gap-x-12 gap-y-9 xl:flex xl:flex-[1_1_290px] xl:flex-col xl:items-stretch"
+          style={{ "--i": 3 } as React.CSSProperties}
+        >
           <section className="flex flex-col gap-4">
             <SectionHead
               title="Badges"
@@ -305,13 +327,14 @@ export function ProfileView({
             <div className="flex flex-col gap-3.5">
               <Badges page={page} size={52} />
             </div>
+            {page.isSelf && <More href="/badges">Badge progress</More>}
           </section>
           <Settings page={page} isDemo={isDemo} />
         </aside>
       </main>
 
       {/* Phone */}
-      <main className="mx-auto flex w-full max-w-[560px] flex-1 flex-col gap-4 px-5 pt-3 pb-28 lg:hidden">
+      <main className="rise mx-auto flex w-full max-w-[560px] flex-1 flex-col gap-4 px-5 pt-3 pb-28 lg:hidden">
         {!page.isSelf && (
           <Link
             href={backHref}
@@ -387,6 +410,7 @@ export function ProfileView({
           <div className="grid grid-cols-2 gap-x-3 gap-y-3.5">
             <Badges page={page} size={40} short />
           </div>
+          {page.isSelf && <More href="/badges">Badge progress</More>}
         </section>
         {wrappedHref && (
           <Link
@@ -418,6 +442,7 @@ export function ProfileView({
               {page.holdingsNote ? `${page.holdingsNote} ` : ""}Mark at 25%, the
               Well Spread limit.
             </span>
+            <More href="/holdings">All holdings</More>
           </section>
         )}
         <BestWorst page={page} />

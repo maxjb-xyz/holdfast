@@ -66,8 +66,12 @@ async function refresh(
     for (let attempt = 0; attempt < 6; attempt++) {
       await options.sleep(400);
       const latest = await store.load();
-      if (!latest || latest.status === "needs_reconnect") throw new ReconnectNeeded();
-      if (latest.status === "active" && latest.refreshToken !== current.refreshToken) {
+      if (!latest || latest.status === "needs_reconnect")
+        throw new ReconnectNeeded();
+      if (
+        latest.status === "active" &&
+        latest.refreshToken !== current.refreshToken
+      ) {
         return latest;
       }
     }
@@ -115,11 +119,17 @@ export async function withAccessToken<T>(
 ): Promise<T> {
   const opts = {
     now: options.now ?? Date.now,
-    sleep: options.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))),
+    sleep:
+      options.sleep ??
+      ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))),
   };
   let tokens = await store.load();
-  if (!tokens || tokens.status === "needs_reconnect") throw new ReconnectNeeded();
-  if (tokens.status !== "active" || tokens.accessExpiresAt - opts.now() < EXPIRY_MARGIN_MS) {
+  if (!tokens || tokens.status === "needs_reconnect")
+    throw new ReconnectNeeded();
+  if (
+    tokens.status !== "active" ||
+    tokens.accessExpiresAt - opts.now() < EXPIRY_MARGIN_MS
+  ) {
     tokens = await refresh(store, tokens, doRefresh, opts);
   }
   try {
