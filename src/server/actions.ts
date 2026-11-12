@@ -1,11 +1,11 @@
 "use server";
 
 import { cookies } from "next/headers";
-import { inviteCodeFrom } from "@/lib/inputs";
+import { inviteCodeFrom, safeReturnTo } from "@/lib/inputs";
 import { redirect } from "next/navigation";
 import { DEMO_PREFS_COOKIE, readDemoPrefs } from "./leagues";
 import { endSession } from "./session";
-import { DEMO_COOKIE, getViewer } from "./viewer";
+import { DEMO_COOKIE, WELCOME_COOKIE, getViewer } from "./viewer";
 
 /** Opens the demo league for a visitor who has not signed in. */
 export async function startDemo(): Promise<void> {
@@ -28,6 +28,11 @@ export async function leave(): Promise<void> {
   redirect("/");
 }
 
+/** Where a form asked to land afterwards, if that is a page of this app. */
+function backTo(formData: FormData, fallback: string): string {
+  return safeReturnTo(String(formData.get("back") ?? "")) ?? fallback;
+}
+
 const PRIVACY_FIELDS = ["showReturn", "showBadges", "showHoldings"] as const;
 type PrivacyField = (typeof PRIVACY_FIELDS)[number];
 
@@ -45,7 +50,7 @@ export async function togglePrivacy(formData: FormData): Promise<void> {
     const { setPrivacy } = await import("./account");
     await setPrivacy(viewer.id, field, on);
   }
-  redirect("/profile");
+  redirect(backTo(formData, "/profile"));
 }
 
 /** Flips whether one linked account counts toward league scores. */
@@ -64,7 +69,7 @@ export async function toggleAccount(formData: FormData): Promise<void> {
     const { setAccountCounted } = await import("./account");
     await setAccountCounted(viewer.id, accountId, on);
   }
-  redirect("/profile");
+  redirect(backTo(formData, "/profile"));
 }
 
 async function saveDemoPrefs(prefs: object): Promise<void> {
@@ -81,10 +86,14 @@ async function saveDemoPrefs(prefs: object): Promise<void> {
 export async function createLeagueAction(formData: FormData): Promise<void> {
   const viewer = await getViewer();
   if (!viewer) redirect("/");
-  if (viewer.kind !== "user") redirect("/leagues?notice=signin");
+  if (viewer.kind !== "user") redirect("/leagues/new");
   const { createLeague } = await import("./league-admin");
   const made = await createLeague(viewer.id, String(formData.get("name") ?? ""));
-  redirect(made.ok ? "/leagues?notice=created" : `/leagues?notice=${made.reason}`);
+  redirect(
+    made.ok
+      ? `/leagues/${made.leagueId}?notice=created`
+      : `${backTo(formData, "/leagues/new")}?notice=${made.reason}`,
+  );
 }
 
 /** Opens the invite page for a pasted code or link. */
@@ -141,4 +150,104 @@ export async function deleteEverythingAction(): Promise<void> {
   jar.delete(DEMO_COOKIE);
   jar.delete(DEMO_PREFS_COOKIE);
   redirect(revoked ? "/?notice=deleted" : "/?notice=deleted-check");
+}
+
+// ------------------------------------------------------------ managing
+
+/** Runs one owner action on a league and lands back on its manage page. */
+async function manage(
+  formData: FormData,
+  done: string,
+  run: (
+    admin: typeof import("./league-admin"),
+    userId: string,
+    leagueId: string,
+  ) => Promise<{ ok: true } | { ok: false; reason: string }>,
+): Promise<never> {
+  const viewer = await getViewer();
+  if (viewer?.kind !== "user") redirect("/");
+  const leagueId = String(formData.get("leagueId") ?? "");
+  const outcome = await run(await import("./league-admin"), viewer.id, leagueId);
+  const page = `/leagues/${encodeURIComponent(leagueId)}`;
+  redirect(`${page}?notice=${outcome.ok ? done : outcome.reason}`);
+}
+
+export async function renameLeagueAction(formData: FormData): Promise<void> {
+  await manage(formData, "renamed", (admin, userId, leagueId) =>
+    admin.renameLeague(userId, leagueId, String(formData.get("name") ?? "")),
+  );
+}
+
+export async function resetInviteAction(formData: FormData): Promise<void> {
+  await manage(formData, "reset", (admin, userId, leagueId) =>
+    admin.resetInviteCode(userId, leagueId),
+  );
+}
+
+export async function removeMemberAction(formData: FormData): Promise<void> {
+  await manage(formData, "removed", (admin, userId, leagueId) =>
+    admin.removeMember(userId, leagueId, String(formData.get("userId") ?? "")),
+  );
+}
+
+export async function transferLeagueAction(formData: FormData): Promise<void> {
+  await manage(formData, "handed-over", (admin, userId, leagueId) =>
+    admin.transferOwnership(
+      userId,
+      leagueId,
+      String(formData.get("userId") ?? ""),
+    ),
+  );
+}
+
+export async function deleteLeagueAction(formData: FormData): Promise<void> {
+  const viewer = await getViewer();
+  if (viewer?.kind !== "user") redirect("/");
+  const leagueId = String(formData.get("leagueId") ?? "");
+  const { deleteLeague } = await import("./league-admin");
+  const outcome = await deleteLeague(viewer.id, leagueId);
+  redirect(
+    outcome.ok
+      ? "/leagues?notice=deleted"
+      : `/leagues/${encodeURIComponent(leagueId)}?notice=${outcome.reason}`,
+  );
+}
+
+/** Changes the name friends see. */
+export async function renameSelfAction(formData: FormData): Promise<void> {
+  const viewer = await getViewer();
+  if (viewer?.kind !== "user") redirect("/settings");
+  const { setDisplayName } = await import("./account");
+  const ok = await setDisplayName(viewer.id, String(formData.get("name") ?? ""));
+  redirect(`/settings?notice=${ok ? "renamed" : "name"}`);
+}
+
+/** Pulls fresh numbers from SnapTrade, at most once a minute. */
+export async function syncNowAction(): Promise<void> {
+  const viewer = await getViewer();
+  if (viewer?.kind !== "user") redirect("/settings");
+  const { snaptradeConfig } = await import("./env");
+  const config = await snaptradeConfig();
+  if (!config) redirect("/settings?notice=setup");
+  const { syncUser } = await import("./sync");
+  let result: string;
+  try {
+    result = await syncUser(viewer.id, config, { minGapMs: 60_000 });
+  } catch (cause) {
+    console.error("manual sync failed", cause);
+    result = "failed";
+  }
+  redirect(`/settings?notice=sync-${result}`);
+}
+
+/** Skips the rest of the first run and opens the demo league. */
+export async function skipWelcomeAction(): Promise<void> {
+  (await cookies()).set(WELCOME_COOKIE, "1", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+  redirect("/league?league=demo");
 }

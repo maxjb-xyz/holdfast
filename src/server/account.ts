@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { toDateString } from "@/lib/quarters";
 import { getDb } from "@/db";
 import { accounts, users } from "@/db/schema";
+import { cleanDisplayName } from "@/lib/inputs";
 
 export async function setPrivacy(
   userId: string,
@@ -46,4 +47,16 @@ export async function setAccountCounted(
       })
       .where(eq(users.id, userId)),
   ]);
+}
+
+/** Changes the name friends see. Returns false when nothing usable was given. */
+export async function setDisplayName(
+  userId: string,
+  rawName: string,
+): Promise<boolean> {
+  const displayName = cleanDisplayName(rawName);
+  if (!displayName) return false;
+  const db = await getDb();
+  await db.update(users).set({ displayName }).where(eq(users.id, userId));
+  return true;
 }

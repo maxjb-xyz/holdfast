@@ -2,15 +2,26 @@
 
 export const LEAGUE_NAME_MAX = 40;
 
-/** Trims a league name and strips control characters and angle brackets. */
-export function cleanLeagueName(raw: string): string | null {
+export const DISPLAY_NAME_MAX = 40;
+
+function cleanName(raw: string, max: number): string | null {
   const name = raw
     .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff<>]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, LEAGUE_NAME_MAX)
+    .slice(0, max)
     .trim();
   return name.length > 0 ? name : null;
+}
+
+/** Trims a league name and strips control characters and angle brackets. */
+export function cleanLeagueName(raw: string): string | null {
+  return cleanName(raw, LEAGUE_NAME_MAX);
+}
+
+/** The name friends see. Same cleaning as a league name. */
+export function cleanDisplayName(raw: string): string | null {
+  return cleanName(raw, DISPLAY_NAME_MAX);
 }
 
 /** Pulls an invite code out of whatever was pasted: a code or a whole link. */
