@@ -49,24 +49,36 @@ export type AccountLine = {
 
 /** How one account reads in a list: its name, and a quieter line of detail. */
 export function accountLine(account: AccountView): AccountLine {
-  const brokerage = account.institution?.trim() || null;
+  const name = account.name?.trim() || null;
+  // Without a name of its own, the stored label ("Fidelity ··4471") already
+  // carries the brokerage and number, so the line under it does not repeat them.
+  const brokerage = name ? account.institution?.trim() || null : null;
   const parts: string[] = [];
-  if (account.lastFour) parts.push(`··${account.lastFour}`);
+  if (name && account.lastFour) parts.push(`··${account.lastFour}`);
   if (typeof account.positions === "number") {
     parts.push(plural(account.positions, "position"));
   }
   if (!account.connected) parts.push("Link dropped");
-  // Without a name of its own, the stored label would repeat the brokerage
-  // and number that the detail line already gives.
-  const plain = !account.name && (brokerage || account.lastFour);
   return {
     id: account.id,
-    title: account.name || (plain ? "Account" : account.label),
+    title: name ? withoutBrokerage(name, brokerage) : account.label,
     brokerage,
     detail: parts.join(" · "),
     counted: account.counted,
     connected: account.connected,
   };
+}
+
+/**
+ * "Robinhood Individual" reads "Individual" when "Robinhood" sits under it.
+ * A name that is only the brokerage is kept as it is.
+ */
+function withoutBrokerage(name: string, brokerage: string | null): string {
+  if (!brokerage) return name;
+  const lead = brokerage.toLowerCase() + " ";
+  return name.toLowerCase().startsWith(lead) && name.length > lead.length
+    ? name.slice(lead.length).trim()
+    : name;
 }
 
 // ---------------------------------------------------------------- leagues

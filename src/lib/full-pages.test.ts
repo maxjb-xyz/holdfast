@@ -101,7 +101,7 @@ describe("accountLine", () => {
     expect(line.detail).toBe("··4471 · 9 positions");
   });
 
-  it("does not repeat the brokerage in the title of an unnamed account", () => {
+  it("keeps the label of an unnamed account and does not repeat it", () => {
     const line = accountLine({
       id: "a",
       label: "Fidelity ··4471",
@@ -111,9 +111,30 @@ describe("accountLine", () => {
       name: null,
       lastFour: "4471",
     });
-    expect(line.title).toBe("Account");
-    expect(line.brokerage).toBe("Fidelity");
-    expect(line.detail).toBe("··4471 · Link dropped");
+    expect(line.title).toBe("Fidelity ··4471");
+    expect(line.brokerage).toBeNull();
+    expect(line.detail).toBe("Link dropped");
+  });
+
+  it("drops a leading brokerage from the name when it is shown below", () => {
+    const line = accountLine({
+      id: "a",
+      label: "Robinhood Individual ··2019",
+      ...base,
+      institution: "Robinhood",
+      name: "Robinhood Individual",
+      lastFour: "2019",
+    });
+    expect(line.title).toBe("Individual");
+    expect(line.brokerage).toBe("Robinhood");
+    const solo = accountLine({
+      id: "b",
+      label: "x",
+      ...base,
+      institution: "Robinhood",
+      name: "Robinhood",
+    });
+    expect(solo.title).toBe("Robinhood");
   });
 });
 

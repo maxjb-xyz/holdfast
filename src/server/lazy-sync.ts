@@ -10,6 +10,13 @@ import { syncUser } from "./sync";
 const STALE_MS = 60 * 60_000;
 /** How soon an account stored without its details is tried again. */
 const DETAILS_RETRY_MS = 5 * 60_000;
+/**
+ * When the sync started storing each account's brokerage, name and number.
+ * Only people last synced before this can have rows missing all three for
+ * that reason; for anyone synced since, a blank row is what SnapTrade sent
+ * (or an account it no longer lists), and re-syncing would not change it.
+ */
+const DETAILS_SINCE = Date.parse("2026-11-12T17:57:00Z");
 
 /**
  * Whether the person has an account stored before the sync kept its details
@@ -24,6 +31,7 @@ async function missingDetails(userId: string): Promise<boolean> {
     .where(
       and(
         eq(accounts.userId, userId),
+        eq(accounts.connected, true),
         isNull(accounts.institution),
         isNull(accounts.name),
         isNull(accounts.lastFour),
@@ -47,7 +55,12 @@ export async function syncIfStale(user: SessionUser): Promise<void> {
   if (now - claimed < DETAILS_RETRY_MS) return;
   try {
     const stale = now - last >= STALE_MS && now - claimed >= STALE_MS / 4;
-    if (!stale && !(await missingDetails(user.id))) return;
+    const repair =
+      !stale &&
+      last < DETAILS_SINCE &&
+      !user.pausedSince &&
+      (await missingDetails(user.id));
+    if (!stale && !repair) return;
     const config = await snaptradeConfig();
     if (!config) return;
     const { ctx } = await getCloudflareContext({ async: true });
