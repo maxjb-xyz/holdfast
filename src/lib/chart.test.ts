@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   domainTicks,
+  hoverStops,
+  nearestStop,
   linePath,
   niceTicks,
   paddedDomain,
@@ -133,5 +135,62 @@ describe("domainTicks", () => {
   });
   it("matches the plain ticks once returns span more than the minimum", () => {
     expect(domainTicks([-0.02, 0.06])).toEqual(niceTicks(-0.02, 0.06));
+  });
+});
+
+describe("hoverStops", () => {
+  const pt = (date: string, value: number) => ({ date, value, partial: false });
+  const x = (date: string) => Number(date.slice(-2)) * 10;
+  const y = (v: number) => 100 - v * 1000;
+  const fmt = (v: number) => `${(v * 100).toFixed(1)}%`;
+  const stops = hoverStops(
+    [
+      {
+        key: "a",
+        name: "Ana",
+        color: "#111",
+        points: [pt("2026-10-01", 0), pt("2026-10-02", 0.01)],
+      },
+      {
+        key: "b",
+        name: "You",
+        color: "#222",
+        you: true,
+        points: [pt("2026-10-02", 0.03), pt("2026-10-03", 0.02)],
+      },
+    ],
+    x,
+    y,
+    (d) => d,
+    fmt,
+  );
+
+  it("makes one stop per day, in date order", () => {
+    expect(stops.map((s) => s.title)).toEqual([
+      "2026-10-01",
+      "2026-10-02",
+      "2026-10-03",
+    ]);
+    expect(stops.map((s) => s.x)).toEqual([10, 20, 30]);
+  });
+
+  it("lists only the lines that have a value that day, best first", () => {
+    expect(stops[0].items.map((i) => i.key)).toEqual(["a"]);
+    expect(stops[1].items.map((i) => i.key)).toEqual(["b", "a"]);
+    expect(stops[1].items[0]).toEqual({
+      key: "b",
+      name: "You",
+      value: "3.0%",
+      y: 70,
+      color: "#222",
+      you: true,
+    });
+  });
+
+  it("finds the nearest stop to a position", () => {
+    expect(nearestStop(stops, 24)?.title).toBe("2026-10-02");
+    expect(nearestStop(stops, 26)?.title).toBe("2026-10-03");
+    expect(nearestStop(stops, -500)?.title).toBe("2026-10-01");
+    expect(nearestStop([], 5)).toBeNull();
   });
 });

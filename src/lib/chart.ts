@@ -156,3 +156,95 @@ export function thin(points: readonly Point[], step: number): Point[] {
   });
   return kept;
 }
+
+/** One readable position along a chart: a day, and each line's value on it. */
+export type HoverStop = {
+  /** Horizontal position in the chart's own viewBox units. */
+  x: number;
+  title: string;
+  items: {
+    key: string;
+    name: string;
+    value: string;
+    /** Vertical position in viewBox units. */
+    y: number;
+    color: string;
+    you?: boolean;
+  }[];
+};
+
+export type HoverSeries = {
+  key: string;
+  name: string;
+  color: string;
+  you?: boolean;
+  points: readonly Point[];
+};
+
+/**
+ * Every day any line has a value on, with the lines that reach it listed
+ * from the highest return down. A line with no value that day is left out
+ * rather than guessed at.
+ */
+export function hoverStops(
+  series: readonly HoverSeries[],
+  x: (date: string) => number,
+  y: (value: number) => number,
+  title: (date: string) => string,
+  format: (value: number) => string,
+): HoverStop[] {
+  const byDate = new Map<
+    string,
+    (HoverStop["items"][number] & { v: number })[]
+  >();
+  for (const s of series) {
+    for (const p of s.points) {
+      const items = byDate.get(p.date) ?? [];
+      // A line passes through a day once. Keep the first value seen.
+      if (items.some((i) => i.key === s.key)) continue;
+      items.push({
+        key: s.key,
+        name: s.name,
+        value: format(p.value),
+        y: y(p.value),
+        color: s.color,
+        you: s.you,
+        v: p.value,
+      });
+      byDate.set(p.date, items);
+    }
+  }
+  return [...byDate.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([date, items]) => ({
+      x: x(date),
+      title: title(date),
+      items: items
+        .sort((a, b) => b.v - a.v)
+        .map((item) => ({
+          key: item.key,
+          name: item.name,
+          value: item.value,
+          y: item.y,
+          color: item.color,
+          you: item.you,
+        })),
+    }));
+}
+
+/** The stop nearest to `x`, or null when there are none. */
+export function nearestStop(
+  stops: readonly HoverStop[],
+  x: number,
+): HoverStop | null {
+  let best: HoverStop | null = null;
+  let gap = Infinity;
+  for (const stop of stops) {
+    const d = Math.abs(stop.x - x);
+    if (d < gap) {
+      gap = d;
+      best = stop;
+    }
+  }
+  return best;
+}

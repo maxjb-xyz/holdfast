@@ -239,9 +239,10 @@ export default async function LeagueRoute({
 
       {/* Desktop */}
       <main className="mx-auto hidden w-full max-w-[1440px] flex-1 flex-col gap-9 px-10 pt-6 pb-10 lg:flex">
-        <div className="flex gap-x-14">
-          <section className="flex min-w-0 flex-[1_1_280px] flex-col gap-9">
-            <div className="flex flex-col gap-3">
+        {/* Side by side when there is room. Narrower, the summary sits above the chart. */}
+        <div className="flex flex-col gap-y-9 xl:flex-row xl:gap-x-14">
+          <section className="grid min-w-0 grid-cols-2 gap-x-14 gap-y-6 xl:flex xl:flex-[1_1_280px] xl:flex-col xl:gap-9">
+            <div className="rise flex flex-col gap-3">
               <span className="label flex items-center gap-2">
                 {kind} · {members}
                 {viewer.kind === "user" && (
@@ -255,7 +256,10 @@ export default async function LeagueRoute({
               </h1>
             </div>
             {you ? (
-              <div className="flex flex-col gap-1.5">
+              <div
+                className="rise flex flex-col gap-1.5"
+                style={{ "--i": 1.5 } as React.CSSProperties}
+              >
                 <span className="label flex items-center gap-2 !text-you">
                   <span
                     className="size-1.5 rounded-full bg-you"
@@ -275,16 +279,22 @@ export default async function LeagueRoute({
                     they join.
                   </span>
                 )}
-                {page.stats.length > 0 && (
-                  <div className="flex flex-col border-b border-faint pt-3.5">
-                    {page.stats.map((s) => (
-                      <Fact key={s.label} {...s} />
-                    ))}
-                  </div>
-                )}
               </div>
             ) : null}
-            <div className="mt-auto flex flex-col gap-2.5">
+            {you && page.stats.length > 0 && (
+              <div
+                className="rise col-start-2 row-span-2 row-start-1 flex flex-col self-end border-b border-faint xl:-mt-4 xl:self-auto"
+                style={{ "--i": 2.5 } as React.CSSProperties}
+              >
+                {page.stats.map((s) => (
+                  <Fact key={s.label} {...s} />
+                ))}
+              </div>
+            )}
+            <div
+              className="rise col-span-2 flex flex-col gap-2.5 xl:mt-auto"
+              style={{ "--i": 4 } as React.CSSProperties}
+            >
               <div className="flex justify-between font-mono text-[11px] tracking-[0.08em] text-dim">
                 <span>
                   {quarterName.toUpperCase()} · WEEK {page.week} OF 13
@@ -302,13 +312,14 @@ export default async function LeagueRoute({
                 {Array.from({ length: 13 }, (_, i) => (
                   <span
                     key={i}
-                    className={`h-[3px] ${i < page.week - 1 ? "bg-text" : i === page.week - 1 ? "bg-you" : "bg-rule"}`}
+                    className={`bar-grow h-[3px] ${i < page.week - 1 ? "bg-text" : i === page.week - 1 ? "bg-you" : "bg-rule"}`}
+                    style={{ "--i": 4 + i * 0.5 } as React.CSSProperties}
                   />
                 ))}
               </div>
             </div>
           </section>
-          <section className="flex min-w-0 flex-[999_1_640px] flex-col gap-5">
+          <section className="flex min-w-0 flex-col gap-5 xl:flex-[999_1_640px]">
             <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 pl-11">
               <div
                 className="flex gap-0.5"
@@ -340,15 +351,25 @@ export default async function LeagueRoute({
           </section>
         </div>
         <div className="grid grid-cols-3 gap-x-14 gap-y-8">
-          <Activity page={page} day={day} />
-          <Closest page={page} />
-          <LastQuarter page={page} />
+          {[
+            <Activity key="a" page={page} day={day} />,
+            <Closest key="c" page={page} />,
+            <LastQuarter key="l" page={page} />,
+          ].map((block, i) => (
+            <div
+              key={block.key}
+              className="rise"
+              style={{ "--i": 6 + i * 1.5 } as React.CSSProperties}
+            >
+              {block}
+            </div>
+          ))}
         </div>
       </main>
 
       {/* Phone */}
       <main className="mx-auto flex w-full max-w-[560px] flex-1 flex-col gap-3 px-5 pt-3 pb-28 lg:hidden">
-        <div className="flex flex-col gap-1">
+        <div className="rise flex flex-col gap-1">
           <span className="label !text-[10px]">
             {kind} · {page.quarter.key.split("-")[1]} · Week {page.week} of 13
           </span>
@@ -357,7 +378,10 @@ export default async function LeagueRoute({
           </h1>
         </div>
         {you && (
-          <div className="flex items-end justify-between gap-3">
+          <div
+            className="rise flex items-end justify-between gap-3"
+            style={{ "--i": 1.5 } as React.CSSProperties}
+          >
             {headline ? (
               <BigReturn
                 text={headline}
@@ -382,20 +406,25 @@ export default async function LeagueRoute({
             rows={quarterOnly.rows}
             asOf={page.asOf}
             origin={addDays(page.quarter.start, -1)}
+            hover
           />
         </div>
         <ul className="m-0 list-none border-b border-faint p-0">
-          {quarterOnly.rows.map((row) => {
+          {quarterOnly.rows.map((row, i) => {
             const tone = row.isYou
               ? "text-you"
               : row.paused
                 ? "text-dim"
                 : "text-text";
             return (
-              <li key={row.userId} className="border-t border-faint">
+              <li
+                key={row.userId}
+                className="rise border-t border-faint"
+                style={{ "--i": 4 + i } as React.CSSProperties}
+              >
                 <Link
                   href={profileHref(row.userId)}
-                  className="flex min-h-[50px] items-center gap-3.5"
+                  className="flex min-h-[50px] items-center gap-3.5 transition-opacity active:opacity-60"
                 >
                   <span className="w-3.5 font-mono text-xs text-dim">
                     {row.rank ?? "–"}
