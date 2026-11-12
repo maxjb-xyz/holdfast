@@ -224,7 +224,7 @@ export function leagueFeed(
   if (
     you &&
     firstScoredDate(last, you.joinedOn) <= last.end &&
-    you.since <= last.end
+    (you.historyFrom ?? you.since) <= last.end
   ) {
     items.push({
       kind: "wrapped",
@@ -496,7 +496,8 @@ export function career(
   return quartersEndingAt(current, count)
     .filter(
       (q) =>
-        firstScoredDate(q, player.joinedOn) <= q.end && player.since <= q.end,
+        firstScoredDate(q, player.joinedOn) <= q.end &&
+        (player.historyFrom ?? player.since) <= q.end,
     )
     .filter((q) => player.joinedOn <= (q.key === current.key ? today : q.end))
     .map((quarter) => {
@@ -736,6 +737,6 @@ export function wrapped(
     dividendMonths: [...new Set(paid.map((d) => d.slice(0, 7)))],
     style: styleLabel(facts, quarter.end),
     buyMonths: months.filter((m) => facts.buyMonths.includes(m)).length,
-    heldMonths: Math.floor(heldDays / 30.44),
+    heldMonths: Math.max(0, Math.floor(heldDays / 30.44)),
   };
 }

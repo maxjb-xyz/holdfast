@@ -464,7 +464,7 @@ describe("planSync backfill", () => {
     }
   });
 
-  it("never fills an account twice", () => {
+  it("keeps the earliest filled day when an account is worked out again", () => {
     const plan = planSync(
       input({
         fetched: [account({ history })],
@@ -473,7 +473,57 @@ describe("planSync backfill", () => {
         ],
       }),
     );
-    expect(plan.backfill).toEqual([]);
-    expect(plan.accounts[0]).toMatchObject({ historyCheckedOn: "2026-11-01", historyFrom: "2025-11-02" });
+    expect(plan.backfill.length).toBeGreaterThan(0);
+    expect(plan.accounts[0]).toMatchObject({ historyCheckedOn: TODAY, historyFrom: "2025-11-02" });
+  });
+
+  it("leaves a gap in measured days alone, because the catch-up day carries it", () => {
+    const long = Array.from({ length: 40 }, (_, i) => ({
+      date: `2026-10-${String(i + 1).padStart(2, "0")}`,
+      value: 1000 + i,
+    })).filter((p) => p.date <= "2026-10-31");
+    const plan = planSync(
+      input({
+        fetched: [account({ history: long })],
+        storedAccounts: [{ id: "a1", counted: true, lastSyncedOn: "2026-11-10" }],
+        snapshots: [{ accountId: "a1", date: "2026-11-10", balance: 1000 }],
+        // Measured since the 6th of October, with an outage later that month.
+        firstMeasured: { a1: "2026-10-06" },
+      }),
+    );
+    expect(plan.backfill.map((r) => r.date)).toEqual([
+      "2026-10-02",
+      "2026-10-03",
+      "2026-10-04",
+      "2026-10-05",
+    ]);
+  });
+
+  it("works a filled account out again alongside a newly linked one", () => {
+    const plan = planSync(
+      input({
+        fetched: [
+          account({ history, balance: 990 }),
+          account({
+            id: "a2",
+            balance: 110,
+            history: [
+              { date: "2026-11-08", value: 100 },
+              { date: "2026-11-09", value: 110 },
+              { date: "2026-11-10", value: 110 },
+            ],
+          }),
+        ],
+        storedAccounts: [
+          { id: "a1", counted: true, lastSyncedOn: "2026-11-10", historyCheckedOn: "2026-11-10", historyFrom: "2026-11-09" },
+        ],
+        snapshots: [{ accountId: "a1", date: "2026-11-10", balance: 990 }],
+      }),
+    );
+    const on = (id: string, date: string) =>
+      plan.backfill.find((r) => r.accountId === id && r.date === date);
+    expect(on("a1", "2026-11-09")?.weight).toBeCloseTo(0.9, 9);
+    expect(on("a2", "2026-11-09")?.weight).toBeCloseTo(0.1, 9);
+    expect(plan.accounts.map((a) => a.historyFrom)).toEqual(["2026-11-09", "2026-11-09"]);
   });
 });

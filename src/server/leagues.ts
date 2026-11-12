@@ -20,7 +20,7 @@ import {
   type Player,
   type Privacy,
 } from "@/lib/model";
-import { quarterOf, quartersEndingAt, toDateString } from "@/lib/quarters";
+import { addDays, quarterOf, quartersEndingAt, toDateString } from "@/lib/quarters";
 import { combineAccounts, type DailyReturnRow } from "@/lib/scoring";
 import { today, type Viewer } from "./viewer";
 
@@ -131,14 +131,14 @@ async function loadPlayers(
     const created = toDateString(person.createdAt);
     // Backfilled history can reach back before the person signed up.
     const firstRow = rows[0]?.date;
-    const since = firstRow && firstRow < created ? firstRow : created;
     return {
       userId: person.id,
       name: person.displayName,
       joinedOn: joined.get(person.id) ?? created,
       rows,
       pausedSince: person.pausedSince ?? undefined,
-      since,
+      since: created,
+      historyFrom: firstRow && firstRow < created ? firstRow : undefined,
       facts: factRows.find((f) => f.userId === person.id)?.facts ?? EMPTY_FACTS,
       snapshots,
       earned: badgeRows
@@ -212,10 +212,15 @@ export async function loadLeague(
   if (id === DEMO_LEAGUE_ID) {
     const [me] = await loadPlayers(new Map([[viewer.id, day]]), day);
     if (!me) return null;
-    // In the demo league a real person is scored from the day they signed up.
+    // In the demo league a real person is scored from the day they signed
+    // up, or from the start of this quarter when their brokerage history
+    // reaches back that far. Earlier quarters stay the demo's own.
+    const quarterStart = quarterOf(day).start;
+    const eve = addDays(quarterStart, -1);
+    const from = me.historyFrom && me.historyFrom < me.since ? me.historyFrom : me.since;
     return demoLeague(day, {
       ...me,
-      joinedOn: me.since < day ? me.since : day,
+      joinedOn: from <= quarterStart ? eve : from < day ? from : day,
     });
   }
   const [league] = await db.select().from(leagues).where(eq(leagues.id, id));

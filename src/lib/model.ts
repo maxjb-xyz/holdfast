@@ -44,6 +44,11 @@ export type Player = LeagueMember & {
   note?: string;
   /** The first day the player had a score anywhere. */
   since: string;
+  /**
+   * The first day of backfilled history, when the brokerage supplied days
+   * from before the player signed up.
+   */
+  historyFrom?: string;
   /** Habit facts as of today. */
   facts: HabitFacts;
   /** Habit facts frozen at the end of past quarters, by quarter key. */

@@ -139,6 +139,25 @@ describe("backfill", () => {
       joinAt: null,
     });
     expect(rows.map((r) => r.partial)).toEqual([false, true]);
+    // Flat, not a guess: a deposit on the 10th may not be reported yet.
+    expect(rows[1].dailyReturn).toBe(0);
+  });
+
+  it("covers nothing past the day before the first measured return", () => {
+    const { rows } = backfill({
+      history: [
+        { date: "2026-11-05", value: 1000 },
+        { date: "2026-11-06", value: 1010 },
+        { date: "2026-11-07", value: 1020 },
+        { date: "2026-11-08", value: 1030 },
+      ],
+      activities: [],
+      transactionsThrough: TODAY,
+      today: TODAY,
+      joinAt: null,
+      through: "2026-11-06",
+    });
+    expect(rows.map((r) => r.date)).toEqual(["2026-11-06"]);
   });
 
   it("counts a day with an unvalued transfer or an impossible jump as flat and partial", () => {

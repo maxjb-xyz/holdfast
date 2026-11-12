@@ -75,6 +75,11 @@ async function fetchAll(
       return null;
     }
   };
+  // When one account needs its history, every account's is read, so each
+  // account's share of a past day is worked out from all of them together.
+  const readHistory = accounts
+    .slice(0, MAX_ACCOUNTS)
+    .some((a) => wantsHistory(a.id));
   const read = await Promise.all(
     accounts.slice(0, MAX_ACCOUNTS).map(async (a) => {
       const connected =
@@ -83,7 +88,7 @@ async function fetchAll(
         ? await Promise.all([
             orNull(api.activities(a.id, since)),
             a.holdingsAvailable ? orNull(api.positions(a.id)) : null,
-            wantsHistory(a.id)
+            readHistory
               ? orNull(api.balanceHistory(a.id).then((h) => h ?? ("unavailable" as const)))
               : undefined,
           ])
@@ -219,8 +224,34 @@ export async function syncUser(
   const mine = fetched.filter((a) => !taken.has(a.id));
   const ownedIds = owned.map((a) => a.id);
 
+  // Where each account's own measured days begin. Estimates stop there.
+  const firstMeasured: Record<string, string> = {};
+  if (mine.some((a) => Array.isArray(a.history))) {
+    const rows = await db
+      .select({
+        accountId: t.dailyReturns.accountId,
+        first: sql<string>`min(${t.dailyReturns.date})`,
+      })
+      .from(t.dailyReturns)
+      .where(
+        and(
+          eq(t.dailyReturns.estimated, false),
+          inArray(
+            t.dailyReturns.accountId,
+            db
+              .select({ id: t.accounts.id })
+              .from(t.accounts)
+              .where(eq(t.accounts.userId, userId)),
+          ),
+        ),
+      )
+      .groupBy(t.dailyReturns.accountId);
+    for (const r of rows) firstMeasured[r.accountId] = r.first;
+  }
+
   const plan = planSync({
     today,
+    firstMeasured,
     fetched: mine,
     storedAccounts: owned,
     snapshots,
@@ -325,8 +356,8 @@ export async function syncUser(
     );
   }
   // A year of estimated days per account goes in as one statement each, as
-  // JSON, to stay well inside D1's limits. A day that already has a return
-  // keeps it.
+  // JSON, to stay well inside D1's limits. Only an earlier estimate is ever
+  // replaced: a day Holdfast measured keeps its return.
   const backfilled = new Map<string, (string | number | null)[][]>();
   for (const r of plan.backfill) {
     const rows = backfilled.get(r.accountId) ?? [];
@@ -344,7 +375,10 @@ export async function syncUser(
         from json_each(${JSON.stringify(rows)})
         where exists (
           select 1 from accounts a where a.id = ${accountId} and a.user_id = ${userId})
-        on conflict do nothing`),
+        on conflict (account_id, date) do update set
+          daily_return = excluded.daily_return, partial = excluded.partial,
+          weight = excluded.weight, flow_rate = excluded.flow_rate
+        where daily_returns.estimated = 1`),
     );
   }
   if (ids.length > 0 || ownedIds.length > 0) {

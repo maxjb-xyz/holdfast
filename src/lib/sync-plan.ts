@@ -72,6 +72,11 @@ export type SyncInput = {
    * this time. Defaults to the ids in `fetched`.
    */
   listedIds?: readonly string[];
+  /**
+   * The first day each account has a return Holdfast measured itself, by
+   * account id. Estimates are only ever written before that day.
+   */
+  firstMeasured?: Readonly<Record<string, string>>;
   /** Badges the person already holds, from any quarter. */
   heldBadges?: readonly BadgeKey[];
 };
@@ -102,8 +107,8 @@ export type SyncPlan = {
   returns: (DailyReturnRow & { accountId: string })[];
   /**
    * Estimated returns for days before Holdfast was watching an account.
-   * Written only where no return is stored yet, so a measured day is never
-   * replaced by an estimate.
+   * They replace earlier estimates for the same days and nothing else, so a
+   * measured day is never replaced by an estimate.
    */
   backfill: (DailyReturnRow & { accountId: string })[];
   /** Null when facts could not be rebuilt and the stored ones should stay. */
@@ -152,25 +157,34 @@ export function planSync(input: SyncInput): SyncPlan {
     if (historyFrom === null && account.history === "unavailable") {
       historyCheckedOn = today;
     } else if (
-      historyFrom === null &&
+      // An account that was filled in before is worked out again whenever
+      // its history was read, which happens when another account needs
+      // filling. Every account's share of each day then comes from the same
+      // set of balances.
       Array.isArray(account.history) &&
       // Without settled transactions a deposit cannot be told from a gain,
       // so the backfill waits for a sync that has them.
       account.activities !== null &&
       account.transactionsThrough !== null
     ) {
+      const firstMeasured = input.firstMeasured?.[account.id] ?? null;
       let joinAt: Snapshot | null = null;
-      for (const s of history) if (!joinAt || s.date < joinAt.date) joinAt = s;
+      if (!firstMeasured) {
+        for (const s of history) if (!joinAt || s.date < joinAt.date) joinAt = s;
+      }
       const result = backfill({
         history: account.history,
         activities: account.activities,
         transactionsThrough: account.transactionsThrough,
         today,
         joinAt,
+        // A measured return dated D runs from the close of D-1.
+        through: firstMeasured ? addDays(firstMeasured, -1) : null,
       });
       historyCheckedOn = today;
       if (result.rows.length > 0) {
-        historyFrom = result.rows[0].date;
+        const first = result.rows[0].date;
+        historyFrom = historyFrom !== null && historyFrom < first ? historyFrom : first;
         filled.set(account.id, result);
       }
     }
@@ -240,7 +254,6 @@ export function planSync(input: SyncInput): SyncPlan {
   }
 
   // The same shares for the backfilled days, from the estimated balances.
-  // They are worked out among the accounts filled in by this sync.
   const backfillRows: SyncPlan["backfill"] = [];
   const filledDates = new Set<string>();
   for (const { rows } of filled.values()) {

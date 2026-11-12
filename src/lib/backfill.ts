@@ -131,6 +131,13 @@ export type BackfillInput = {
    * take over from there.
    */
   joinAt: Snapshot | null;
+  /**
+   * The last day an estimate may cover, for an account that already has
+   * measured returns: the day before the first of them. A later gap in the
+   * measured days is left alone, because the day that ended it already
+   * carries the whole move.
+   */
+  through?: string | null;
 };
 
 export type Backfill = {
@@ -147,6 +154,8 @@ export type Backfill = {
 export function backfill(input: BackfillInput): Backfill {
   const { activities, joinAt, today } = input;
   let points = cleanHistory(input.history, today);
+  const through = input.through;
+  if (through) points = points.filter((p) => p.date <= through);
   if (joinAt) {
     points = points.filter((p) => p.date <= joinAt.date);
     // The history's own value for the joining day is preferred: a return is
@@ -173,7 +182,13 @@ export function backfill(input: BackfillInput): Backfill {
   // A day's return covers everything since the point before it.
   const previous = new Map(points.slice(1).map((p, i) => [p.date, points[i].date]));
   const rows = measured.map((row) => {
-    let unexplained = !plausible(row.dailyReturn);
+    // Past the last settled transaction a deposit may not be reported yet.
+    // A measured day is corrected when it arrives; an estimate is written
+    // once, so it does not guess.
+    let unexplained =
+      !plausible(row.dailyReturn) ||
+      input.transactionsThrough === null ||
+      row.date > input.transactionsThrough;
     const from = previous.get(row.date);
     if (from) {
       for (const day of unclear) unexplained ||= day > from && day <= row.date;
