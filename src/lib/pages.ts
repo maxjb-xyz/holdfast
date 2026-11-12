@@ -441,6 +441,22 @@ export type BadgeTile = {
   meta: string;
 };
 
+/** How many holdings the profile lists. The rest are still counted. */
+const HOLDINGS_SHOWN = 6;
+
+/**
+ * Says where the listed holdings come from: every counted account together,
+ * largest first. Null when there is nothing to add.
+ */
+export function holdingsNote(total: number, accounts: number): string | null {
+  if (total === 0) return null;
+  const from = accounts > 1 ? ` across ${accounts} accounts` : "";
+  if (total > HOLDINGS_SHOWN) {
+    return `Largest ${HOLDINGS_SHOWN} of ${total} holdings${from}.`;
+  }
+  return from ? `All holdings${from}.` : null;
+}
+
 export type ProfilePage = {
   userId: string;
   name: string;
@@ -456,6 +472,8 @@ export type ProfilePage = {
   streak: number;
   /** Only for the player themselves. */
   holdings: (Holding & { over: boolean })[] | null;
+  /** How the holdings shown relate to everything held. Null when not shown. */
+  holdingsNote: string | null;
   /** Shown to friends when the player allows it. */
   bestWorst: { best: Holding; worst: Holding | null } | null;
   /** Null when the player keeps badges private. */
@@ -595,8 +613,14 @@ export function profilePage(
     streak,
     holdings: isSelf
       ? sorted
-          .slice(0, 6)
+          .slice(0, HOLDINGS_SHOWN)
           .map((h) => ({ ...h, over: h.share > WELL_SPREAD_LIMIT }))
+      : null,
+    holdingsNote: isSelf
+      ? holdingsNote(
+          sorted.length,
+          player.accounts.filter((a) => a.counted && a.connected).length,
+        )
       : null,
     bestWorst:
       !isSelf && player.privacy.showHoldings && bestH

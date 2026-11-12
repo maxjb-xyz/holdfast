@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import * as t from "@/db/schema";
+import { accountLabel } from "@/lib/account-label";
 import type { BadgeKey } from "@/lib/badges";
 import { ACTIVITY_LOOKBACK_DAYS } from "@/lib/sync-math";
 import { addDays, toDateString } from "@/lib/quarters";
@@ -11,13 +12,13 @@ import {
   Unauthorized,
   withAccessToken,
 } from "./snaptrade/access";
-import { SnapTradeApi } from "./snaptrade/api";
+import { SnapTradeApi, type SnapAccount } from "./snaptrade/api";
 import { refreshTokens } from "./snaptrade/oauth";
 import { pauseForReconnect, tokenStore } from "./snaptrade/token-store";
 import { planSync, type FetchedAccount } from "@/lib/sync-plan";
 
 /** Accounts read per person, to stay inside a Worker's request budget. */
-const MAX_ACCOUNTS = 8;
+const MAX_ACCOUNTS = 12;
 /** D1 allows 100 bound values per statement. */
 const MAX_PARAMS = 90;
 
@@ -38,13 +39,28 @@ async function fetchAll(
   today: string,
 ): Promise<{ accounts: FetchedAccount[]; listedIds: string[] }> {
   const api = new SnapTradeApi(accessToken);
-  const [accounts, connections] = await Promise.all([
+  const [listed, connections] = await Promise.all([
     api.accounts(),
     api.connections(),
   ]);
+  // Leagues score investments. Bank accounts, loans and the like that came
+  // along with a connection are left out.
+  const closed = (a: SnapAccount) =>
+    a.status === "closed" || a.status === "archived";
+  // If the cap ever bites, paper and closed accounts are the ones dropped.
+  const rank = (a: SnapAccount) => (closed(a) ? 2 : a.isPaper ? 1 : 0);
+  const accounts = listed
+    .filter((a) => a.kind === "investment")
+    .sort((a, b) => rank(a) - rank(b));
+  if (accounts.length > MAX_ACCOUNTS) {
+    console.warn(
+      `sync read ${MAX_ACCOUNTS} of ${accounts.length} investment accounts`,
+    );
+  }
   const disabled = new Set(
     connections.filter((c) => c.disabled).map((c) => c.id),
   );
+  const brokerages = new Map(connections.map((c) => [c.id, c.brokerage]));
   const since = addDays(today, -ACTIVITY_LOOKBACK_DAYS);
   // A 401 has to reach the caller so the token is refreshed. Any other
   // failure on one account leaves that account's day marked partial.
@@ -69,8 +85,15 @@ async function fetchAll(
         : [null, null];
       return {
         id: a.id,
-        label: `${a.institution} ${a.name}`.trim().slice(0, 60) || "Account",
+        label: accountLabel({
+          ...a,
+          institution:
+            a.institution ??
+            (a.connectionId ? brokerages.get(a.connectionId) : null) ??
+            null,
+        }),
         isPaper: a.isPaper,
+        closed: closed(a),
         connected,
         balance: a.balance,
         transactionsThrough: a.transactionsReady ? a.transactionsThrough : null,
@@ -211,6 +234,18 @@ export async function syncUser(
           },
           setWhere: eq(t.accounts.userId, userId),
         }),
+    );
+  }
+  if (plan.forgetAccountIds.length > 0) {
+    writes.push(
+      db
+        .delete(t.accounts)
+        .where(
+          and(
+            eq(t.accounts.userId, userId),
+            inArray(t.accounts.id, plan.forgetAccountIds.slice(0, 80)),
+          ),
+        ),
     );
   }
   if (plan.goneAccountIds.length > 0) {
