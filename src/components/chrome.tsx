@@ -31,7 +31,7 @@ export function Header({
   status: string;
 }) {
   return (
-    <header className="flex items-center justify-between gap-x-8 px-5 pt-1.5 lg:px-10 lg:py-3.5">
+    <header className="flex items-center justify-between gap-x-8 px-5 pt-1.5 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:px-10 lg:py-3.5">
       <Wordmark />
       <nav className="hidden items-center gap-7 lg:flex" aria-label="Main">
         {NAV.map((item) => (
@@ -47,7 +47,7 @@ export function Header({
           </Link>
         ))}
       </nav>
-      <div className="flex items-center gap-1.5 lg:gap-[18px]">
+      <div className="flex items-center gap-1.5 lg:justify-self-end lg:gap-[18px]">
         <span className="hidden items-center gap-1.5 font-mono text-[11px] text-grey lg:flex">
           <Icon name="sync" size={13} />
           {status}

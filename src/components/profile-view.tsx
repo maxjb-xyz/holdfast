@@ -280,7 +280,8 @@ export function ProfileView({
                   <>
                     <HoldingBars holdings={page.holdings} />
                     <span className="text-xs text-grey">
-                      Mark at 25%, the Well Spread limit.
+                      {page.holdingsNote ? `${page.holdingsNote} ` : ""}Mark at
+                      25%, the Well Spread limit.
                     </span>
                   </>
                 ) : (
@@ -414,7 +415,8 @@ export function ProfileView({
             />
             <HoldingBars holdings={page.holdings} />
             <span className="text-xs text-grey">
-              Mark at 25%, the Well Spread limit.
+              {page.holdingsNote ? `${page.holdingsNote} ` : ""}Mark at 25%, the
+              Well Spread limit.
             </span>
           </section>
         )}

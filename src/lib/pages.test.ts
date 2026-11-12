@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { DEMO_VIEWER_ID, demoLeague } from "./demo";
 import { DEFAULT_PRIVACY, type League, type Player } from "./model";
-import { career, leagueFeed, leaguePage, profilePage, wrapped } from "./pages";
+import {
+  career,
+  holdingsNote,
+  leagueFeed,
+  leaguePage,
+  profilePage,
+  wrapped,
+} from "./pages";
 import { addDays, quarterOf } from "./quarters";
 import type { DailyReturnRow } from "./scoring";
 
@@ -354,5 +361,18 @@ describe("demo league pages", () => {
       expect(w).not.toBeNull();
       expect(Number.isFinite(w!.value) && Number.isFinite(w!.added)).toBe(true);
     }
+  });
+});
+
+describe("holdingsNote", () => {
+  it("says how many holdings and accounts stand behind the list", () => {
+    expect(holdingsNote(23, 3)).toBe("Largest 6 of 23 holdings across 3 accounts.");
+    expect(holdingsNote(23, 1)).toBe("Largest 6 of 23 holdings.");
+    expect(holdingsNote(4, 2)).toBe("All holdings across 2 accounts.");
+  });
+
+  it("stays quiet when the list already says it all", () => {
+    expect(holdingsNote(4, 1)).toBeNull();
+    expect(holdingsNote(0, 3)).toBeNull();
   });
 });

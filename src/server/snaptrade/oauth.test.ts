@@ -203,7 +203,8 @@ describe("crypto helpers", () => {
     await expect(unseal(sealed, key, "user-2")).rejects.toThrow();
     await expect(unseal(sealed, base64url(new Uint8Array(32).fill(8)), "user-1")).rejects.toThrow();
     const [v, iv, data] = sealed.split(".");
-    const flipped = data.slice(0, -2) + (data.endsWith("A") ? "B" : "A") + data.slice(-1);
+    // Changes the second-to-last character, whatever it was.
+    const flipped = data.slice(0, -2) + (data.at(-2) === "A" ? "B" : "A") + data.slice(-1);
     await expect(unseal(`${v}.${iv}.${flipped}`, key, "user-1")).rejects.toThrow();
   });
 
