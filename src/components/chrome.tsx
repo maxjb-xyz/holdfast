@@ -116,18 +116,62 @@ export function Fact({
   label,
   value,
   quiet = false,
+  spark,
 }: {
   label: string;
   value: string;
   quiet?: boolean;
+  /** A short run of values drawn as a small line before the figure. */
+  spark?: number[];
 }) {
   return (
     <div className="flex items-baseline justify-between gap-4 border-t border-faint py-[9px]">
       <span className="text-dim">{label}</span>
-      <span className={`font-mono text-[13px] ${quiet ? "text-sub" : ""}`}>
-        {value}
+      <span className="flex items-center gap-3">
+        {spark && spark.length > 2 && <Spark values={spark} />}
+        <span className={`font-mono text-[13px] ${quiet ? "text-sub" : ""}`}>
+          {value}
+        </span>
       </span>
     </div>
+  );
+}
+
+/** A few days as a small line. Decoration for a figure that is already stated. */
+function Spark({ values }: { values: number[] }) {
+  const w = 44;
+  const h = 14;
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+  const span = hi - lo || 1;
+  const pts = values.map(
+    (v, i) =>
+      [
+        1 + ((w - 4) * i) / (values.length - 1),
+        2 + (h - 4) * (1 - (v - lo) / span),
+      ] as const,
+  );
+  const end = pts[pts.length - 1];
+  return (
+    <svg
+      width={w}
+      height={h}
+      viewBox={`0 0 ${w} ${h}`}
+      aria-hidden="true"
+      className="chart-late flex-none"
+    >
+      <path
+        d={pts
+          .map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`)
+          .join(" ")}
+        fill="none"
+        stroke="#646973"
+        strokeWidth={1.25}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      <circle cx={end[0]} cy={end[1]} r={1.75} fill="#EDEDEB" />
+    </svg>
   );
 }
 

@@ -114,8 +114,19 @@ function Closest({ page }: { page: LeaguePage }) {
           {page.closest.map((c, i) => (
             <li
               key={i}
-              className="flex items-baseline gap-3 border-t border-faint py-[9px]"
+              className="relative flex items-baseline gap-3 border-t border-faint py-[9px]"
             >
+              {/* The row's own rule fills as the badge gets closer. */}
+              <span
+                aria-hidden="true"
+                className="bar-grow absolute -top-px left-0 h-px bg-sub"
+                style={
+                  {
+                    width: `${Math.round(c.closeness * 100)}%`,
+                    "--i": 8 + i,
+                  } as React.CSSProperties
+                }
+              />
               <span className="w-[76px] flex-none truncate">{c.name}</span>
               <span className="flex-1 text-dim">{c.badge}</span>
               <span className="font-mono text-xs text-sub">{c.remaining}</span>
