@@ -5,7 +5,6 @@ import { Fact, Header, SectionHead, TabBar } from "@/components/chrome";
 import { CopyLink } from "@/components/copy-link";
 import { Icon } from "@/components/icons";
 import {
-  ActionRow,
   ConfirmRow,
   Crumb,
   Notice,
@@ -19,6 +18,7 @@ import { LEAGUE_NAME_MAX } from "@/lib/inputs";
 import { MAX_LEAGUE_MEMBERS } from "@/lib/model";
 import { leaguePage } from "@/lib/pages";
 import { nextQuarter, quarterOf, quartersEndingAt } from "@/lib/quarters";
+import { firstScoredDate } from "@/lib/scoring";
 import {
   deleteLeagueAction,
   leaveLeagueAction,
@@ -39,7 +39,8 @@ const NOTICES: Record<string, string> = {
   created: "League made. Send the invite link to your friends.",
   renamed: "The league has its new name.",
   reset: "The invite link is new. The old one no longer works.",
-  removed: "They are out of the league. Their own scores and badges stay with them.",
+  removed:
+    "They are out of the league. Their own scores and badges stay with them.",
   "handed-over": "The league has a new owner.",
   name: "Give the league a name first.",
   "not-owner": "Only the league's owner can do that.",
@@ -74,7 +75,7 @@ export default async function ManageLeagueRoute({
   const open = MAX_LEAGUE_MEMBERS - admin.members.length;
   const others = admin.members.filter((m) => m.userId !== viewer.id);
   const owner = admin.members.find((m) => m.userId === admin.ownerId);
-  const startOn = (league as { startOn?: string | null }).startOn ?? null;
+  const mine = admin.members.find((m) => m.userId === viewer.id);
   const pastQuarters = quartersEndingAt(quarter, 4)
     .slice(0, -1)
     .filter((q) => q.end >= admin.createdOn).length;
@@ -209,19 +210,28 @@ export default async function ManageLeagueRoute({
                         <details className="group relative justify-self-end">
                           <summary className="hover-text flex min-h-11 cursor-pointer list-none items-center text-[13px] text-dim [&::-webkit-details-marker]:hidden">
                             <span className="group-open:hidden">Remove</span>
-                            <span className="hidden group-open:inline">Cancel</span>
+                            <span className="hidden group-open:inline">
+                              Cancel
+                            </span>
                           </summary>
                           <form
                             action={removeMemberAction}
                             className="hf-rise absolute top-full right-0 z-10 flex w-[260px] flex-col gap-2.5 border border-rule bg-raised p-3.5"
                           >
                             {hidden}
-                            <input type="hidden" name="userId" value={m.userId} />
+                            <input
+                              type="hidden"
+                              name="userId"
+                              value={m.userId}
+                            />
                             <span className="text-[13px] text-dim">
                               {m.name} stops being scored here. They can rejoin
                               with a fresh invite.
                             </span>
-                            <button type="submit" className={`${outline} self-start`}>
+                            <button
+                              type="submit"
+                              className={`${outline} self-start`}
+                            >
                               Remove {m.name.split(" ")[0]}
                             </button>
                           </form>
@@ -251,7 +261,9 @@ export default async function ManageLeagueRoute({
               <div className="flex flex-col gap-2.5 border-t border-faint py-3.5">
                 <Segments done={admin.members.length} of={MAX_LEAGUE_MEMBERS} />
                 {open > 0 ? (
-                  <CopyLink url={`${await siteOrigin()}/join/${admin.inviteCode}`} />
+                  <CopyLink
+                    url={`${await siteOrigin()}/join/${admin.inviteCode}`}
+                  />
                 ) : (
                   <span className="text-dim">
                     This league is full, so its invite link is closed.
@@ -275,19 +287,21 @@ export default async function ManageLeagueRoute({
             </div>
           </section>
           <section className="flex flex-col gap-2.5">
-            <SectionHead title="This quarter" aside={quarterLabel(quarter.key)} />
+            <SectionHead
+              title="This quarter"
+              aside={quarterLabel(quarter.key)}
+            />
             <div className="flex flex-col border-b border-faint">
               <Fact
-                label="Scoring started"
+                label="You are scored from"
                 value={withYear(
-                  startOn && startOn > quarter.start
-                    ? startOn
-                    : admin.createdOn > quarter.start && !startOn
-                      ? admin.createdOn
-                      : quarter.start,
+                  firstScoredDate(quarter, mine?.joinedOn ?? day),
                 )}
               />
-              <Fact label="Resets" value={withYear(nextQuarter(quarter).start)} />
+              <Fact
+                label="Resets"
+                value={withYear(nextQuarter(quarter).start)}
+              />
               <Fact
                 label="Past quarters"
                 value={pastQuarters === 0 ? "None yet" : String(pastQuarters)}

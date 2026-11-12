@@ -52,7 +52,9 @@ function Choice({
       style={{ "--i": index * 2 } as React.CSSProperties}
     >
       <span className="label">{label}</span>
-      <h2 className="m-0 text-[22px] font-medium tracking-[-0.02em]">{title}</h2>
+      <h2 className="m-0 text-[22px] font-medium tracking-[-0.02em]">
+        {title}
+      </h2>
       <p className="m-0 max-w-[40ch] text-dim">{text}</p>
       {children}
     </section>
@@ -88,9 +90,9 @@ export default async function WelcomeLeagueRoute({
               Find your league.
             </h1>
             <p className="m-0 max-w-[44ch] text-[15px] text-sub">
-              A league is up to {MAX_LEAGUE_MEMBERS === 8 ? "eight" : MAX_LEAGUE_MEMBERS}{" "}
-              friends on one chart, scored on percentage return for the
-              quarter.
+              A league is up to{" "}
+              {MAX_LEAGUE_MEMBERS === 8 ? "eight" : MAX_LEAGUE_MEMBERS} friends
+              on one chart, scored on percentage return for the quarter.
             </p>
           </div>
           <Notice>{notice}</Notice>

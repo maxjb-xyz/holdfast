@@ -126,12 +126,14 @@ async function settleLeagues(leagueIds: readonly string[]): Promise<void> {
   const db = await getDb();
   const mine = inArray(t.leagues.id, [...leagueIds]);
   await db.batch([
-    db.delete(t.leagues).where(
-      and(
-        mine,
-        sql`not exists (select 1 from league_members m where m.league_id = leagues.id)`,
+    db
+      .delete(t.leagues)
+      .where(
+        and(
+          mine,
+          sql`not exists (select 1 from league_members m where m.league_id = leagues.id)`,
+        ),
       ),
-    ),
     db
       .update(t.leagues)
       .set({
@@ -260,7 +262,10 @@ export async function deleteEverything(
     db.delete(t.users).where(eq(t.users.id, userId)),
   ]);
   await settleLeagues([
-    ...new Set([...memberships.map((m) => m.leagueId), ...owned.map((o) => o.id)]),
+    ...new Set([
+      ...memberships.map((m) => m.leagueId),
+      ...owned.map((o) => o.id),
+    ]),
   ]);
   return revoked;
 }
@@ -299,7 +304,6 @@ export async function myLeagues(userId: string): Promise<MyLeague[]> {
     joinedOn: r.joinedOn,
   }));
 }
-
 
 // ------------------------------------------------------------ managing
 
@@ -443,12 +447,14 @@ export async function deleteLeague(
 ): Promise<ManageOutcome> {
   const db = await getDb();
   const [, gone] = await db.batch([
-    db.delete(t.leagueMembers).where(
-      and(
-        eq(t.leagueMembers.leagueId, leagueId),
-        sql`exists (select 1 from leagues l where l.id = ${leagueId} and l.owner_id = ${ownerId})`,
+    db
+      .delete(t.leagueMembers)
+      .where(
+        and(
+          eq(t.leagueMembers.leagueId, leagueId),
+          sql`exists (select 1 from leagues l where l.id = ${leagueId} and l.owner_id = ${ownerId})`,
+        ),
       ),
-    ),
     db
       .delete(t.leagues)
       .where(ownedBy(leagueId, ownerId))

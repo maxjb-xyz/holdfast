@@ -37,7 +37,11 @@ export function Spark({
         aria-hidden="true"
         className="block flex-none"
       >
-        <path d={`M0 ${height / 2} H${width}`} stroke={C.rule} strokeWidth={1} />
+        <path
+          d={`M0 ${height / 2} H${width}`}
+          stroke={C.rule}
+          strokeWidth={1}
+        />
         <circle cx={3} cy={height / 2} r={3} fill={colour} />
       </svg>
     );
@@ -58,7 +62,11 @@ export function Spark({
       aria-hidden="true"
       className="block flex-none"
     >
-      <path d={`M0 ${y(0).toFixed(1)} H${width}`} stroke={C.rule} strokeWidth={1} />
+      <path
+        d={`M0 ${y(0).toFixed(1)} H${width}`}
+        stroke={C.rule}
+        strokeWidth={1}
+      />
       <path
         className="hf-draw"
         pathLength={1}
@@ -69,7 +77,12 @@ export function Spark({
         strokeLinejoin="round"
         strokeLinecap="round"
       />
-      <circle cx={x(series.length - 1)} cy={y(last.value)} r={3} fill={colour} />
+      <circle
+        cx={x(series.length - 1)}
+        cy={y(last.value)}
+        r={3}
+        fill={colour}
+      />
     </svg>
   );
 }
@@ -88,7 +101,9 @@ function frame(f: Frame) {
   const days = daysInclusive(f.quarter.start, f.quarter.end);
   const x = (date: string) =>
     f.left +
-    ((f.width - f.left) * (daysInclusive(f.quarter.start, date) - 1)) / days;
+    ((f.width - f.left) *
+      Math.max(0, daysInclusive(f.quarter.start, date) - 1)) /
+      days;
   const weeks = Array.from({ length: 14 }, (_, i) =>
     i < 13 ? x(addDays(f.quarter.start, i * 7)) : f.width,
   );
@@ -113,7 +128,11 @@ function Axis({ f, todayX }: { f: Frame; todayX: number }) {
           strokeWidth={1}
         />
       ))}
-      <path d={`M${f.left} ${floor} H${f.width}`} stroke={C.rule} strokeWidth={1} />
+      <path
+        d={`M${f.left} ${floor} H${f.width}`}
+        stroke={C.rule}
+        strokeWidth={1}
+      />
       {months.map((m) => (
         <text
           key={m.date}
@@ -211,7 +230,11 @@ export function StartChart({
           </text>
         </g>
       ))}
-      <path d={`M${f.left} ${y(0).toFixed(1)} H${f.width}`} stroke={C.rule} strokeWidth={1} />
+      <path
+        d={`M${f.left} ${y(0).toFixed(1)} H${f.width}`}
+        stroke={C.rule}
+        strokeWidth={1}
+      />
       <text
         x={f.left - 12}
         y={y(0) + 4}
@@ -332,7 +355,10 @@ export function PreviewChart({
   const sx = (date: string) => x(date) * scale;
   const value = has ? series[series.length - 1].value : 0;
   const shown = Math.min(places, 3);
-  const firstRow = Math.min(Math.max(y(value) - 8, f.top + 8), floor - 40 - shown * 34);
+  const firstRow = Math.min(
+    Math.max(y(value) - 8, f.top + 8),
+    floor - 40 - shown * 34,
+  );
   const rowY = (i: number) => firstRow + i * 34;
   return (
     <svg
@@ -342,7 +368,11 @@ export function PreviewChart({
       aria-label={`A preview of the new league. You are its first member and ${places} places are open.`}
       className="block overflow-visible"
     >
-      <path d={`M0 ${y(0).toFixed(1)} H${f.width}`} stroke={C.rule} strokeWidth={1} />
+      <path
+        d={`M0 ${y(0).toFixed(1)} H${f.width}`}
+        stroke={C.rule}
+        strokeWidth={1}
+      />
       <path d={`M0 ${floor} H${f.width}`} stroke={C.rule} strokeWidth={1} />
       {weeks.map((wx, i) => (
         <path
@@ -371,7 +401,13 @@ export function PreviewChart({
         strokeDasharray="2 4"
       />
       <circle cx={tx} cy={y(value)} r={4.5} fill={C.you} />
-      <text x={tx + 34} y={rowY(0) + 5} fontFamily={MONO} fontSize={12} fill={C.dim}>
+      <text
+        x={tx + 34}
+        y={rowY(0) + 5}
+        fontFamily={MONO}
+        fontSize={12}
+        fill={C.dim}
+      >
         1
       </text>
       <text

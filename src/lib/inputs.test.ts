@@ -54,3 +54,12 @@ describe("safeReturnTo", () => {
     }
   });
 });
+
+describe("cleanDisplayName", () => {
+  it("trims, strips markup characters and caps the length", async () => {
+    const { cleanDisplayName, DISPLAY_NAME_MAX } = await import("./inputs");
+    expect(cleanDisplayName("  Max <b> B.  ")).toBe("Max b B.");
+    expect(cleanDisplayName(" ​ ")).toBeNull();
+    expect(cleanDisplayName("x".repeat(90))?.length).toBe(DISPLAY_NAME_MAX);
+  });
+});

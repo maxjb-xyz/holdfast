@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { BigReturn, Fact, Header, SectionHead, TabBar } from "@/components/chrome";
+import {
+  BigReturn,
+  Fact,
+  Header,
+  SectionHead,
+  TabBar,
+} from "@/components/chrome";
 import { Icon } from "@/components/icons";
 import { signedPercent } from "@/lib/format";
 import { holdingsPage, type HoldingRow } from "@/lib/full-pages";
@@ -105,7 +111,9 @@ export default async function HoldingsRoute({
           </div>
           {page.largest && (
             <div className="hf-rise flex flex-col gap-1.5">
-              <span className="label">Largest holding · {page.largest.ticker}</span>
+              <span className="label">
+                Largest holding · {page.largest.ticker}
+              </span>
               <BigReturn
                 text={(page.largest.share * 100).toFixed(1)}
                 className="text-[58px] lg:text-[84px]"
@@ -195,7 +203,11 @@ export default async function HoldingsRoute({
                       {page.filters.map((f) => (
                         <Link
                           key={f.key}
-                          href={f.key === "all" ? "/holdings" : `/holdings?account=${encodeURIComponent(f.key)}`}
+                          href={
+                            f.key === "all"
+                              ? "/holdings"
+                              : `/holdings?account=${encodeURIComponent(f.key)}`
+                          }
                           scroll={false}
                           aria-current={f.active ? "true" : undefined}
                           className={`flex min-h-8 flex-none items-center rounded-full px-3 text-[12.5px] font-medium transition-colors ${
@@ -212,7 +224,12 @@ export default async function HoldingsRoute({
                     <span className="label">Positions</span>
                   )}
                   <span className="hidden items-center gap-[7px] text-xs text-grey lg:flex">
-                    <svg width="1" height="12" viewBox="0 0 1 12" aria-hidden="true">
+                    <svg
+                      width="1"
+                      height="12"
+                      viewBox="0 0 1 12"
+                      aria-hidden="true"
+                    >
                       <path d="M0.5 0V12" stroke="#646973" strokeWidth="1" />
                     </svg>
                     25% Well Spread limit
@@ -236,7 +253,9 @@ export default async function HoldingsRoute({
                       <li
                         key={r.ticker}
                         className={`hf-row hf-hover ${COLS} min-h-12 border-t border-faint lg:min-h-[46px]`}
-                        style={{ "--i": Math.min(i, 14) } as React.CSSProperties}
+                        style={
+                          { "--i": Math.min(i, 14) } as React.CSSProperties
+                        }
                       >
                         <span className="truncate font-mono text-[13px]">
                           {r.ticker}

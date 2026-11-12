@@ -51,11 +51,7 @@ function Row({ row, index }: { row: BadgeRow; index: number }) {
             <span key={q.label} className="flex flex-col items-center gap-1.5">
               <span
                 className={`box-border size-2.5 rounded-full ${
-                  q.earned
-                    ? q.current
-                      ? "bg-you"
-                      : "bg-text"
-                    : "border border-grey"
+                  q.earned ? "bg-text" : "border border-grey"
                 }`}
               />
               <span
@@ -103,7 +99,9 @@ export default async function BadgesRoute() {
           </div>
           <div className="hf-rise flex flex-col gap-1.5">
             <span className="label">Earned so far</span>
-            <span className="numeral text-[58px] lg:text-[84px]">{page.total}</span>
+            <span className="numeral text-[58px] lg:text-[84px]">
+              {page.total}
+            </span>
             <div className="flex flex-col border-b border-faint pt-3.5">
               <Fact label="This quarter" value={`${page.earnedNow} earned`} />
               <Fact

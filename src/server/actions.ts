@@ -88,7 +88,10 @@ export async function createLeagueAction(formData: FormData): Promise<void> {
   if (!viewer) redirect("/");
   if (viewer.kind !== "user") redirect("/leagues/new");
   const { createLeague } = await import("./league-admin");
-  const made = await createLeague(viewer.id, String(formData.get("name") ?? ""));
+  const made = await createLeague(
+    viewer.id,
+    String(formData.get("name") ?? ""),
+  );
   redirect(
     made.ok
       ? `/leagues/${made.leagueId}?notice=created`
@@ -100,9 +103,7 @@ export async function createLeagueAction(formData: FormData): Promise<void> {
 export async function openInviteAction(formData: FormData): Promise<void> {
   const code = inviteCodeFrom(String(formData.get("code") ?? ""));
   redirect(
-    code
-      ? `/join/${code}`
-      : `${backTo(formData, "/leagues")}?notice=not-found`,
+    code ? `/join/${code}` : `${backTo(formData, "/leagues")}?notice=not-found`,
   );
 }
 
@@ -135,7 +136,9 @@ export async function disconnectAction(): Promise<void> {
   const { disconnect } = await import("./league-admin");
   const { snaptradeConfig } = await import("./env");
   const revoked = await disconnect(viewer.id, await snaptradeConfig());
-  redirect(`/settings?notice=${revoked ? "disconnected" : "disconnected-check"}`);
+  redirect(
+    `/settings?notice=${revoked ? "disconnected" : "disconnected-check"}`,
+  );
 }
 
 /** Deletes everything about the person in one step and signs them out. */
@@ -171,7 +174,11 @@ async function manage(
   const viewer = await getViewer();
   if (viewer?.kind !== "user") redirect("/");
   const leagueId = String(formData.get("leagueId") ?? "");
-  const outcome = await run(await import("./league-admin"), viewer.id, leagueId);
+  const outcome = await run(
+    await import("./league-admin"),
+    viewer.id,
+    leagueId,
+  );
   const page = `/leagues/${encodeURIComponent(leagueId)}`;
   redirect(`${page}?notice=${outcome.ok ? done : outcome.reason}`);
 }
@@ -222,7 +229,10 @@ export async function renameSelfAction(formData: FormData): Promise<void> {
   const viewer = await getViewer();
   if (viewer?.kind !== "user") redirect("/settings");
   const { setDisplayName } = await import("./account");
-  const ok = await setDisplayName(viewer.id, String(formData.get("name") ?? ""));
+  const ok = await setDisplayName(
+    viewer.id,
+    String(formData.get("name") ?? ""),
+  );
   redirect(`/settings?notice=${ok ? "renamed" : "name"}`);
 }
 

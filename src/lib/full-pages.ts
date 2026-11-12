@@ -77,7 +77,10 @@ export function accountGroups(
     group.accounts.push(
       key === null
         ? line
-        : { ...line, detail: line.detail.replace(`${key} · `, "").replace(key, "") },
+        : {
+            ...line,
+            detail: line.detail.replace(`${key} · `, "").replace(key, ""),
+          },
     );
   }
   return groups;
@@ -199,9 +202,11 @@ export function badgesPage(player: Player, today: string): BadgesPage {
           : Math.min(of, Math.floor(closeness * of + 1e-9)),
       of,
       standing: earnedNow
-        ? earnedOn
+        ? earnedOn && earnedOn >= current.start
           ? `Earned ${shortDate(earnedOn)}`
-          : "Earned"
+          : status?.standing
+            ? `Earned, ${status.standing}`
+            : "Earned"
         : status
           ? closeness === 0 && status.remaining.startsWith("Missed")
             ? `${status.remaining}, back next quarter`
@@ -269,8 +274,7 @@ export type HoldingsPage = {
   split: { label: string; share: number }[];
 };
 
-const MONTH_YEAR = (date: string) =>
-  `${monthName(date)} ${date.slice(0, 4)}`;
+const MONTH_YEAR = (date: string) => `${monthName(date)} ${date.slice(0, 4)}`;
 
 export function holdingsPage(
   player: Player,
@@ -292,7 +296,11 @@ export function holdingsPage(
     filters.push({ key: "all", label: "All counted", active: false });
     if (withHoldings.length > 1) {
       for (const a of withHoldings) {
-        filters.push({ key: a.id, label: title.get(a.id) ?? a.label, active: false });
+        filters.push({
+          key: a.id,
+          label: title.get(a.id) ?? a.label,
+          active: false,
+        });
       }
     }
     if (other.length > 0) {
@@ -309,6 +317,10 @@ export function holdingsPage(
         ? counted
         : counted.filter((h) => h.accounts?.includes(chosen));
   const sorted = [...inView].sort((a, b) => b.share - a.share);
+  // Anything already there on the first day Holdfast looked was bought
+  // earlier than its records go, so its date is only a bound.
+  const firstLook = Object.values(firstSeen).sort()[0] ?? player.since;
+  const baseline = firstLook > player.since ? firstLook : player.since;
   const rows = sorted.map<HoldingRow>((h, i) => {
     const seen = firstSeen[h.ticker];
     return {
@@ -320,7 +332,7 @@ export function holdingsPage(
       largest: i === 0,
       since: !seen
         ? null
-        : seen <= player.since
+        : seen <= baseline
           ? `Before ${MONTH_YEAR(seen)}`
           : MONTH_YEAR(seen),
       accounts: (h.accounts ?? [])
@@ -341,8 +353,12 @@ export function holdingsPage(
     );
   }
   const moved = counted.filter((h) => h.change !== null);
-  const best = [...moved].sort((a, b) => (b.change as number) - (a.change as number))[0];
-  const worst = [...moved].sort((a, b) => (a.change as number) - (b.change as number))[0];
+  const best = [...moved].sort(
+    (a, b) => (b.change as number) - (a.change as number),
+  )[0];
+  const worst = [...moved].sort(
+    (a, b) => (a.change as number) - (b.change as number),
+  )[0];
   if (best) {
     stats.push({
       label: "Best this quarter",

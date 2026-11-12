@@ -117,7 +117,7 @@ export default async function WelcomeRoute({
           </div>
         </section>
         <section className="flex min-w-0 flex-[999_1_520px] flex-col gap-5 lg:pt-[59px]">
-          <div className="flex items-baseline justify-between gap-4 lg:pl-11">
+          <div className="hidden items-baseline justify-between gap-4 sm:flex lg:pl-11">
             <span className="label">
               {quarterLabel(quarter.key)} · Week {week} of 13
             </span>
@@ -125,7 +125,9 @@ export default async function WelcomeRoute({
               {daysLeft === 0 ? "Last day" : `${plural(daysLeft, "day")} left`}
             </span>
           </div>
-          <StartChart quarter={quarter} today={day} series={series} />
+          <div className="hidden sm:block">
+            <StartChart quarter={quarter} today={day} series={series} />
+          </div>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-x-10 gap-y-4 lg:pl-11">
             <span className="flex flex-col gap-1 border-t border-rule pt-3">
               <span className="font-medium">

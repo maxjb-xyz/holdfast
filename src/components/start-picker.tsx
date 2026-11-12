@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Icon } from "./icons";
 
 export type StartChoice = "quarter" | "today" | "custom";
 
@@ -39,7 +38,10 @@ export function StartPicker({
 
   const pick = (next: StartChoice, date = custom) => {
     setChoice(next);
-    onChange?.(next, next === "quarter" ? quarterStart : next === "custom" ? date : "");
+    onChange?.(
+      next,
+      next === "quarter" ? quarterStart : next === "custom" ? date : "",
+    );
   };
 
   const options: { key: StartChoice; title: string; hint: string }[] = [
@@ -107,11 +109,10 @@ export function StartPicker({
             </span>
             {o.key === "custom" && (
               <span
-                className={`flex min-h-9 flex-none items-center gap-2 rounded-full border px-3 font-mono text-xs transition-colors ${
+                className={`flex min-h-9 flex-none items-center rounded-full border px-3 font-mono text-xs transition-colors ${
                   on ? "border-sub text-text" : "border-rule text-dim"
                 }`}
               >
-                <Icon name="calendar" size={14} />
                 <input
                   type="date"
                   aria-label="League start date"

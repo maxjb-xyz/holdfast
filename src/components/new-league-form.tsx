@@ -104,7 +104,7 @@ export function NewLeagueForm({
         </div>
       </form>
       <section
-        className="flex min-w-0 flex-[999_1_520px] flex-col gap-[18px] lg:pt-7"
+        className="hidden min-w-0 flex-[999_1_520px] flex-col gap-[18px] sm:flex lg:pt-7"
         aria-label="Preview"
       >
         <div className="flex items-baseline justify-between gap-4">

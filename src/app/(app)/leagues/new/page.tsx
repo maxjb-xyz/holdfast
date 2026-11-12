@@ -52,7 +52,10 @@ export default async function NewLeagueRoute({
             You are exploring the demo. Sign in with SnapTrade to make a league
             and invite friends. Access is read-only.
           </p>
-          <a href="/api/auth/start?next=/leagues/new" className={`${solidBig} self-start`}>
+          <a
+            href="/api/auth/start?next=/leagues/new"
+            className={`${solidBig} self-start`}
+          >
             Continue with SnapTrade
             <Icon name="arrow" size={16} stroke={1.8} />
           </a>
@@ -106,7 +109,10 @@ export default async function NewLeagueRoute({
               <div className="flex flex-col gap-2.5">
                 <SectionHead title="How it runs" />
                 <div className="flex flex-col border-b border-faint">
-                  <Fact label="Places" value={`${MAX_LEAGUE_MEMBERS}, by invite link`} />
+                  <Fact
+                    label="Places"
+                    value={`${MAX_LEAGUE_MEMBERS}, by invite link`}
+                  />
                   <Fact label="Scored on" value="Percentage return" />
                   <Fact label="Resets" value="Every calendar quarter" />
                   <Fact label="You are" value="The owner" />

@@ -5,7 +5,12 @@ import { CopyLink } from "@/components/copy-link";
 import { Icon } from "@/components/icons";
 import { Spark } from "@/components/quarter-charts";
 import { Notice, Segments, field, outline, solid } from "@/components/ui";
-import { plural, quarterLabel, signedNumber, signedPercent } from "@/lib/format";
+import {
+  plural,
+  quarterLabel,
+  signedNumber,
+  signedPercent,
+} from "@/lib/format";
 import { leagueSummary, type LeagueSummaryRow } from "@/lib/full-pages";
 import { MAX_LEAGUE_MEMBERS } from "@/lib/model";
 import { daysInclusive, quarterOf } from "@/lib/quarters";
@@ -48,7 +53,9 @@ function Row({ row, index }: { row: LeagueSummaryRow; index: number }) {
       <div className={`${COLS} min-h-[76px] lg:min-h-[84px]`}>
         <span className="flex min-w-0 flex-col gap-1">
           <Link
-            href={row.isDemo ? "/league?league=demo" : `/league?league=${row.id}`}
+            href={
+              row.isDemo ? "/league?league=demo" : `/league?league=${row.id}`
+            }
             className={`serif truncate text-[20px] leading-[1.15] after:absolute after:inset-0 lg:text-2xl ${tone}`}
           >
             {row.name}
@@ -59,7 +66,15 @@ function Row({ row, index }: { row: LeagueSummaryRow; index: number }) {
               {plural(row.memberCount, "member")}
               {full ? " · full" : ""} ·
             </span>
-            {role}
+            {row.isDemo ? (
+              <>
+                <span className="lg:hidden">Demo</span>
+                <span className="hidden lg:inline">{role}</span>
+              </>
+            ) : (
+              role
+            )}
+            {!row.isDemo && <span aria-hidden="true">·</span>}
             {!row.isDemo && (
               <Link
                 href={`/leagues/${row.id}`}
@@ -74,7 +89,12 @@ function Row({ row, index }: { row: LeagueSummaryRow; index: number }) {
           <Spark series={row.series} quiet={row.isDemo} />
         </span>
         <span className="lg:hidden">
-          <Spark series={row.series} width={64} height={26} quiet={row.isDemo} />
+          <Spark
+            series={row.series}
+            width={64}
+            height={26}
+            quiet={row.isDemo}
+          />
         </span>
         <span className="hidden flex-col leading-[1.35] lg:flex">
           <span className={tone}>{row.standing}</span>
@@ -152,7 +172,9 @@ export default async function LeaguesRoute({
               </span>
               <span className="hidden lg:block">Your quarter</span>
               <span className="hidden lg:block">Standing</span>
-              <span className="col-span-2 text-right lg:col-span-1">Return</span>
+              <span className="col-span-2 text-right lg:col-span-1">
+                Return
+              </span>
               <span className="hidden lg:block" />
             </div>
             <ul className="m-0 list-none border-b border-faint p-0">
@@ -220,7 +242,10 @@ export default async function LeaguesRoute({
                   You are exploring the demo. Sign in with SnapTrade to make a
                   league and invite friends. Access is read-only.
                 </span>
-                <a href="/api/auth/start?next=/leagues" className={`${solid} self-start`}>
+                <a
+                  href="/api/auth/start?next=/leagues"
+                  className={`${solid} self-start`}
+                >
                   Continue with SnapTrade
                   <Icon name="arrow" size={15} stroke={1.8} />
                 </a>

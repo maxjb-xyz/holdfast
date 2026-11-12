@@ -57,8 +57,10 @@ export default async function SettingsRoute({
   const user = isUser ? await currentUser() : null;
   const prefs = isUser ? null : await readDemoPrefs();
   const privacy = {
-    showReturn: user?.showReturn ?? prefs?.showReturn ?? DEFAULT_PRIVACY.showReturn,
-    showBadges: user?.showBadges ?? prefs?.showBadges ?? DEFAULT_PRIVACY.showBadges,
+    showReturn:
+      user?.showReturn ?? prefs?.showReturn ?? DEFAULT_PRIVACY.showReturn,
+    showBadges:
+      user?.showBadges ?? prefs?.showBadges ?? DEFAULT_PRIVACY.showBadges,
     showHoldings:
       user?.showHoldings ?? prefs?.showHoldings ?? DEFAULT_PRIVACY.showHoldings,
   };

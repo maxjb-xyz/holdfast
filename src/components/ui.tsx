@@ -139,7 +139,11 @@ export function Stepper({ active }: { active: number }) {
             />
             <span
               className={`flex items-center gap-2 ${
-                current ? "font-medium text-text" : done ? "text-sub" : "text-grey"
+                current
+                  ? "font-medium text-text"
+                  : done
+                    ? "text-sub"
+                    : "text-grey"
               }`}
             >
               {done ? (
@@ -173,7 +177,10 @@ export function Segments({
       style={{ gridTemplateColumns: `repeat(${of}, minmax(0, 1fr))` }}
     >
       {Array.from({ length: of }, (_, i) => (
-        <span key={i} className={`h-[3px] ${i < done ? "bg-text" : "bg-rule"}`} />
+        <span
+          key={i}
+          className={`h-[3px] ${i < done ? "bg-text" : "bg-rule"}`}
+        />
       ))}
     </span>
   );
