@@ -77,6 +77,10 @@ async function fetchAll(
     accounts.slice(0, MAX_ACCOUNTS).map(async (a) => {
       const connected =
         a.connectionId === null || !disabled.has(a.connectionId);
+      const institution =
+        a.institution ??
+        (a.connectionId ? brokerages.get(a.connectionId) : null) ??
+        null;
       const [activities, positions] = connected
         ? await Promise.all([
             orNull(api.activities(a.id, since)),
@@ -85,13 +89,10 @@ async function fetchAll(
         : [null, null];
       return {
         id: a.id,
-        label: accountLabel({
-          ...a,
-          institution:
-            a.institution ??
-            (a.connectionId ? brokerages.get(a.connectionId) : null) ??
-            null,
-        }),
+        label: accountLabel({ ...a, institution }),
+        institution,
+        name: a.name ?? a.rawType,
+        lastFour: a.lastFour,
         isPaper: a.isPaper,
         closed: closed(a),
         connected,
@@ -211,7 +212,7 @@ export async function syncUser(
 
   const now = new Date();
   const writes = [];
-  for (const group of chunks(plan.accounts, 6)) {
+  for (const group of chunks(plan.accounts, 10)) {
     writes.push(
       db
         .insert(t.accounts)
@@ -220,6 +221,10 @@ export async function syncUser(
             id: a.id,
             userId,
             label: a.label,
+            institution: a.institution?.slice(0, 60) ?? null,
+            name: a.name?.slice(0, 60) ?? null,
+            lastFour: a.lastFour,
+            positionsCount: a.positionsCount,
             counted: a.countedIfNew,
             connected: a.connected,
             lastSyncedOn: a.lastSyncedOn,
@@ -229,6 +234,11 @@ export async function syncUser(
           target: t.accounts.id,
           set: {
             label: sql`excluded.label`,
+            institution: sql`excluded.institution`,
+            name: sql`excluded.name`,
+            lastFour: sql`excluded.last_four`,
+            // A sync that could not read positions keeps the last count.
+            positionsCount: sql`coalesce(excluded.positions_count, ${t.accounts.positionsCount})`,
             connected: sql`excluded.connected`,
             lastSyncedOn: sql`excluded.last_synced_on`,
           },

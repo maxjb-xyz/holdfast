@@ -54,6 +54,8 @@ export type SnapPosition = {
   units: number;
   price: number;
   cashEquivalent: boolean;
+  /** What the security is called, such as "Apple Inc.". */
+  name: string | null;
 };
 
 /** Position kinds that are contracts, not securities a person owns. */
@@ -186,8 +188,16 @@ export class SnapTradeApi {
         const type = str(t.type);
         if (!date || !type) continue;
         const symbol = obj(t.symbol);
+        // Buying or selling a contract is not buying or selling a holding,
+        // so it gets a type of its own and stays out of the buying habits.
+        const contract =
+          t.option_symbol !== null && typeof t.option_symbol === "object";
+        const kind = type.toUpperCase();
         all.push({
-          type: type.toUpperCase(),
+          type:
+            contract && (kind === "BUY" || kind === "SELL")
+              ? `OPTION_${kind}`
+              : kind,
           date,
           amount: num(t.amount) ?? 0,
           units: num(t.units) ?? 0,
@@ -222,7 +232,13 @@ export class SnapTradeApi {
       const price = num(p.price);
       if (!symbol || units === null || price === null) return [];
       return [
-        { symbol, units, price, cashEquivalent: p.cash_equivalent === true },
+        {
+          symbol,
+          units,
+          price,
+          cashEquivalent: p.cash_equivalent === true,
+          name: str(instrument.description),
+        },
       ];
     });
   }

@@ -22,6 +22,10 @@ export type Position = {
   units: number;
   price: number;
   cashEquivalent: boolean;
+  /** What the security is called, where the brokerage says. */
+  name?: string | null;
+  /** The account that holds it. */
+  accountId?: string;
 };
 
 export type Snapshot = { date: string; balance: number };
@@ -224,26 +228,7 @@ export function buildFacts(input: {
     .map((a) => a.date)
     .sort();
 
-  const bySymbol = new Map<string, { value: number; price: number }>();
-  for (const p of positions) {
-    if (p.cashEquivalent || p.units <= 0 || p.price <= 0) continue;
-    const entry = bySymbol.get(p.symbol) ?? { value: 0, price: p.price };
-    entry.value += p.units * p.price;
-    bySymbol.set(p.symbol, entry);
-  }
-  let total = 0;
-  for (const e of bySymbol.values()) total += e.value;
-  const holdings: Holding[] = [...bySymbol]
-    .map(([ticker, e]) => {
-      const start = startPrices[ticker];
-      return {
-        ticker,
-        share: total > 0 ? e.value / total : 0,
-        change: start && start > 0 ? e.price / start - 1 : null,
-      };
-    })
-    .sort((a, b) => b.share - a.share)
-    .slice(0, MAX_HOLDINGS);
+  const holdings = holdingsFrom(positions, startPrices);
 
   const openings = [
     ...heldSince(activities, positions, input.firstSeen ?? {}, today).values(),
@@ -255,6 +240,50 @@ export function buildFacts(input: {
     holdings,
     holdingSince: openings[0] ?? null,
   };
+}
+
+/**
+ * Positions as holdings: one per symbol however many accounts hold it, as a
+ * share of the positions passed in, largest first. No dollar amounts.
+ */
+export function holdingsFrom(
+  positions: readonly Position[],
+  startPrices: Readonly<Record<string, number>>,
+): Holding[] {
+  type Entry = { value: number; price: number; name?: string; accounts: Set<string> };
+  const bySymbol = new Map<string, Entry>();
+  for (const p of positions) {
+    if (p.cashEquivalent || p.units <= 0 || p.price <= 0) continue;
+    const entry: Entry =
+      bySymbol.get(p.symbol) ?? { value: 0, price: p.price, accounts: new Set() };
+    entry.value += p.units * p.price;
+    if (p.name && !entry.name) entry.name = p.name.slice(0, 80);
+    if (p.accountId) entry.accounts.add(p.accountId);
+    bySymbol.set(p.symbol, entry);
+  }
+  let total = 0;
+  for (const e of bySymbol.values()) total += e.value;
+  return [...bySymbol]
+    .map(([ticker, e]) => {
+      const start = startPrices[ticker];
+      const holding: Holding = {
+        ticker,
+        share: total > 0 ? e.value / total : 0,
+        change: start && start > 0 ? e.price / start - 1 : null,
+      };
+      if (e.name) holding.name = e.name;
+      if (e.accounts.size > 0) holding.accounts = [...e.accounts];
+      return holding;
+    })
+    .sort((a, b) => b.share - a.share)
+    .slice(0, MAX_HOLDINGS);
+}
+
+/** How many securities a set of positions holds, cash aside. */
+export function securitiesHeld(positions: readonly Position[]): number {
+  return new Set(
+    positions.filter((p) => !p.cashEquivalent && p.units > 0).map((p) => p.symbol),
+  ).size;
 }
 
 /** Current prices by symbol, used as the next quarter's starting prices. */

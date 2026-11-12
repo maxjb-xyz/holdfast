@@ -12,6 +12,10 @@ export type Holding = {
   share: number;
   /** Price change so far this quarter, as a fraction. Null when unknown. */
   change: number | null;
+  /** What the security is called, such as "Apple Inc.", when known. */
+  name?: string;
+  /** Ids of the accounts that hold it. Absent on facts from older syncs. */
+  accounts?: string[];
 };
 
 export type HabitFacts = {
@@ -21,8 +25,13 @@ export type HabitFacts = {
   buyDates: readonly string[];
   /** Dates a dividend was paid, as "YYYY-MM-DD". */
   dividendDates: readonly string[];
-  /** Current holdings, largest first. */
+  /** Current holdings across the counted accounts, largest first. */
   holdings: readonly Holding[];
+  /**
+   * Holdings of connected accounts that are left out of leagues, largest
+   * first, as shares of those accounts together. Badges never read these.
+   */
+  otherHoldings?: readonly Holding[];
   /** The day the longest-held current holding was first bought. */
   holdingSince: string | null;
 };
