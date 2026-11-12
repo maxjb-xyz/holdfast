@@ -52,15 +52,30 @@ jobs:
       - name: Find or create the D1 database
         if: steps.gate.outputs.ready == 'true'
         run: |
-          find_id() {
-            npx wrangler d1 list --json | jq -r '.[] | select(.name == "holdfast") | .uuid'
+          # Lists databases. Fails with wrangler's own message when the token
+          # or account id is wrong, instead of a confusing parse error.
+          list() {
+            if ! out="$(npx wrangler d1 list --json 2>&1)"; then
+              echo "$out" >&2
+              echo "::error::Cloudflare refused the request. Check that CLOUDFLARE_API_TOKEN has Account > D1 > Edit and Account > Workers Scripts > Edit, and that CLOUDFLARE_ACCOUNT_ID is the account that token belongs to." >&2
+              return 1
+            fi
+            # Keep only the JSON array, in case wrangler prints notices first.
+            echo "$out" | sed -n '/^\[/,$p'
           }
-          id="$(find_id)"
+          find_id() {
+            listed="$(list)" || return 1
+            echo "$listed" | jq -r '.[] | select(.name == "holdfast") | .uuid'
+          }
+          id="$(find_id)" || exit 1
           if [ -z "$id" ]; then
             npx wrangler d1 create holdfast
-            id="$(find_id)"
+            id="$(find_id)" || exit 1
           fi
-          test -n "$id"
+          if [ -z "$id" ]; then
+            echo "::error::Could not find or create the holdfast D1 database."
+            exit 1
+          fi
           sed -i "s/00000000-0000-0000-0000-000000000000/$id/" wrangler.jsonc
       - name: Apply database migrations
         if: steps.gate.outputs.ready == 'true'
