@@ -3,6 +3,7 @@
  * what is already stored. Pure: no database, no network.
  */
 
+import { backfill, type HistoryPoint } from "./backfill";
 import { badgeStatuses, type BadgeKey, type HabitFacts } from "./badges";
 import { addDays, previousQuarter, quarterOf } from "./quarters";
 import type { DailyReturnRow } from "./scoring";
@@ -32,12 +33,21 @@ export type FetchedAccount = {
   activities: Activity[] | null;
   /** Null when the positions could not be read this time. */
   positions: Position[] | null;
+  /**
+   * The brokerage's estimated value history, for filling in the days before
+   * Holdfast was watching. Left out when this sync did not ask for it,
+   * "unavailable" when the brokerage or the app does not offer one, and null
+   * when the read failed and should be tried again.
+   */
+  history?: HistoryPoint[] | "unavailable" | null;
 };
 
 export type StoredAccount = {
   id: string;
   counted: boolean;
   lastSyncedOn: string | null;
+  historyCheckedOn?: string | null;
+  historyFrom?: string | null;
 };
 
 export type StoredFacts = {
@@ -72,6 +82,8 @@ export type SyncPlan = {
     countedIfNew: boolean;
     connected: boolean;
     lastSyncedOn: string | null;
+    historyCheckedOn: string | null;
+    historyFrom: string | null;
   }[];
   /**
    * Stored accounts SnapTrade no longer lists: the person removed them
@@ -80,6 +92,12 @@ export type SyncPlan = {
   goneAccountIds: string[];
   snapshots: { accountId: string; date: string; balance: number }[];
   returns: (DailyReturnRow & { accountId: string })[];
+  /**
+   * Estimated returns for days before Holdfast was watching an account.
+   * Written only where no return is stored yet, so a measured day is never
+   * replaced by an estimate.
+   */
+  backfill: (DailyReturnRow & { accountId: string })[];
   /** Null when facts could not be rebuilt and the stored ones should stay. */
   facts: StoredFacts | null;
   /** The quarter that just ended, frozen for its Wrapped. */
@@ -100,17 +118,11 @@ export function planSync(input: SyncInput): SyncPlan {
   const snapshots: SyncPlan["snapshots"] = [];
   const perAccount = new Map<string, Snapshot[]>();
   const rowsByAccount = new Map<string, DailyReturnRow[]>();
+  const filled = new Map<string, { rows: DailyReturnRow[]; points: Snapshot[] }>();
 
   for (const account of fetched) {
     const before = stored.get(account.id);
     const usable = account.connected && account.balance !== null;
-    accounts.push({
-      id: account.id,
-      label: account.label,
-      countedIfNew: !account.isPaper,
-      connected: account.connected,
-      lastSyncedOn: usable ? today : (before?.lastSyncedOn ?? null),
-    });
     const history: Snapshot[] = input.snapshots
       .filter((s) => s.accountId === account.id && s.date < today)
       .map((s) => ({ date: s.date, balance: s.balance }));
@@ -120,6 +132,43 @@ export function planSync(input: SyncInput): SyncPlan {
       history.push({ date: today, balance });
     }
     perAccount.set(account.id, history);
+
+    let historyCheckedOn = before?.historyCheckedOn ?? null;
+    let historyFrom = before?.historyFrom ?? null;
+    if (historyFrom === null && account.history === "unavailable") {
+      historyCheckedOn = today;
+    } else if (
+      historyFrom === null &&
+      Array.isArray(account.history) &&
+      // Without settled transactions a deposit cannot be told from a gain,
+      // so the backfill waits for a sync that has them.
+      account.activities !== null &&
+      account.transactionsThrough !== null
+    ) {
+      let joinAt: Snapshot | null = null;
+      for (const s of history) if (!joinAt || s.date < joinAt.date) joinAt = s;
+      const result = backfill({
+        history: account.history,
+        activities: account.activities,
+        transactionsThrough: account.transactionsThrough,
+        today,
+        joinAt,
+      });
+      historyCheckedOn = today;
+      if (result.rows.length > 0) {
+        historyFrom = result.rows[0].date;
+        filled.set(account.id, result);
+      }
+    }
+    accounts.push({
+      id: account.id,
+      label: account.label,
+      countedIfNew: !account.isPaper,
+      connected: account.connected,
+      lastSyncedOn: usable ? today : (before?.lastSyncedOn ?? null),
+      historyCheckedOn,
+      historyFrom,
+    });
     if (history.length < 2) continue;
     const { flows, unclear } = flowsByDay(account.activities ?? []);
     const rows = recomputeWindow(
@@ -172,6 +221,36 @@ export function planSync(input: SyncInput): SyncPlan {
         ...r,
         accountId,
         weight: weights.get(r.date)?.get(accountId) ?? null,
+      });
+    }
+  }
+
+  // The same shares for the backfilled days, from the estimated balances.
+  // They are worked out among the accounts filled in by this sync.
+  const backfillRows: SyncPlan["backfill"] = [];
+  const filledDates = new Set<string>();
+  for (const { rows } of filled.values()) {
+    for (const r of rows) filledDates.add(r.date);
+  }
+  const cursors = new Map([...filled.keys()].map((id) => [id, 0]));
+  const filledWeights = new Map<string, Map<string, number | null>>();
+  for (const date of [...filledDates].sort()) {
+    const starts = new Map<string, number>();
+    for (const [accountId, { rows, points }] of filled) {
+      if (date < rows[0].date || date > rows[rows.length - 1].date) continue;
+      let i = cursors.get(accountId) ?? 0;
+      while (i + 1 < points.length && points[i + 1].date < date) i++;
+      cursors.set(accountId, i);
+      if (points[i].date < date) starts.set(accountId, points[i].balance);
+    }
+    filledWeights.set(date, weightsFor(starts));
+  }
+  for (const [accountId, { rows }] of filled) {
+    for (const r of rows) {
+      backfillRows.push({
+        ...r,
+        accountId,
+        weight: filledWeights.get(r.date)?.get(accountId) ?? null,
       });
     }
   }
@@ -292,6 +371,7 @@ export function planSync(input: SyncInput): SyncPlan {
       .map((a) => a.id),
     snapshots,
     returns,
+    backfill: backfillRows,
     facts,
     freeze,
     badges,

@@ -352,3 +352,91 @@ describe("planSync", () => {
     expect(plan.facts?.firstSeen).toEqual({ OLD: "2025-02-01", NEW: TODAY });
   });
 });
+
+describe("planSync backfill", () => {
+  const history = [
+    { date: "2026-11-08", value: 900 },
+    { date: "2026-11-09", value: 990 },
+    { date: "2026-11-10", value: 990 },
+  ];
+
+  it("fills in the days before the first sync and joins onto today's balance", () => {
+    const plan = planSync(input({ fetched: [account({ history })] }));
+    expect(plan.backfill.map((r) => r.date)).toEqual(["2026-11-09", "2026-11-10", TODAY]);
+    expect(plan.backfill.every((r) => r.estimated && r.accountId === "a1" && r.weight === 1)).toBe(true);
+    expect(plan.backfill[0].dailyReturn).toBeCloseTo(0.1, 9);
+    expect(plan.backfill[2].dailyReturn).toBeCloseTo(1000 / 990 - 1, 9);
+    expect(plan.accounts[0]).toMatchObject({ historyCheckedOn: TODAY, historyFrom: "2026-11-09" });
+    expect(plan.returns).toEqual([]);
+  });
+
+  it("stops at the earliest recorded balance for an account already being watched", () => {
+    const plan = planSync(
+      input({
+        fetched: [account({ history, balance: 1010 })],
+        storedAccounts: [{ id: "a1", counted: true, lastSyncedOn: "2026-11-10" }],
+        snapshots: [
+          { accountId: "a1", date: "2026-11-09", balance: 1000 },
+          { accountId: "a1", date: "2026-11-10", balance: 1000 },
+        ],
+      }),
+    );
+    expect(plan.backfill.map((r) => r.date)).toEqual(["2026-11-09"]);
+    expect(plan.returns.map((r) => r.date)).toEqual(["2026-11-10", TODAY]);
+    expect(plan.returns.every((r) => !r.estimated)).toBe(true);
+  });
+
+  it("splits the weight between accounts by their estimated balances", () => {
+    const plan = planSync(
+      input({
+        fetched: [
+          account({ history, balance: 990 }),
+          account({
+            id: "a2",
+            balance: 300,
+            history: [
+              { date: "2026-11-09", value: 330 },
+              { date: "2026-11-10", value: 300 },
+            ],
+          }),
+        ],
+      }),
+    );
+    const on = (id: string, date: string) =>
+      plan.backfill.find((r) => r.accountId === id && r.date === date);
+    expect(on("a1", "2026-11-09")?.weight).toBe(1);
+    expect(on("a1", "2026-11-10")?.weight).toBeCloseTo(0.75, 9);
+    expect(on("a2", "2026-11-10")?.weight).toBeCloseTo(0.25, 9);
+  });
+
+  it("notes the day it asked when the brokerage has no history, and asks nothing else", () => {
+    const plan = planSync(input({ fetched: [account({ history: "unavailable" })] }));
+    expect(plan.backfill).toEqual([]);
+    expect(plan.accounts[0]).toMatchObject({ historyCheckedOn: TODAY, historyFrom: null });
+  });
+
+  it("waits when the read failed or transactions are not settled yet", () => {
+    for (const over of [
+      { history: null },
+      { history, activities: null },
+      { history, transactionsThrough: null },
+    ]) {
+      const plan = planSync(input({ fetched: [account(over)] }));
+      expect(plan.backfill).toEqual([]);
+      expect(plan.accounts[0]).toMatchObject({ historyCheckedOn: null, historyFrom: null });
+    }
+  });
+
+  it("never fills an account twice", () => {
+    const plan = planSync(
+      input({
+        fetched: [account({ history })],
+        storedAccounts: [
+          { id: "a1", counted: true, lastSyncedOn: null, historyCheckedOn: "2026-11-01", historyFrom: "2025-11-02" },
+        ],
+      }),
+    );
+    expect(plan.backfill).toEqual([]);
+    expect(plan.accounts[0]).toMatchObject({ historyCheckedOn: "2026-11-01", historyFrom: "2025-11-02" });
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanLeagueName, inviteCodeFrom, safeReturnTo } from "./inputs";
+import { cleanLeagueName, cleanStartDate, inviteCodeFrom, safeReturnTo } from "./inputs";
 
 describe("cleanLeagueName", () => {
   it("trims and collapses spaces", () => {
@@ -51,6 +51,25 @@ describe("safeReturnTo", () => {
       "/" + "a".repeat(300),
     ]) {
       expect(safeReturnTo(bad)).toBeNull();
+    }
+  });
+});
+
+describe("cleanStartDate", () => {
+  const today = "2026-11-12";
+  it("accepts a day in the past year", () => {
+    expect(cleanStartDate("2026-10-01", today)).toBe("2026-10-01");
+    expect(cleanStartDate(" 2025-11-12 ", today)).toBe("2025-11-12");
+    expect(cleanStartDate("2026-11-11", today)).toBe("2026-11-11");
+  });
+  it("treats today, the future and anything older than a year as starting today", () => {
+    expect(cleanStartDate(today, today)).toBeNull();
+    expect(cleanStartDate("2026-11-13", today)).toBeNull();
+    expect(cleanStartDate("2025-11-11", today)).toBeNull();
+  });
+  it("rejects anything that is not a real day", () => {
+    for (const raw of ["", null, undefined, "2026-02-30", "2026-13-01", "10/01/2026", "2026-10-01T00:00", "x"]) {
+      expect(cleanStartDate(raw, today)).toBeNull();
     }
   });
 });

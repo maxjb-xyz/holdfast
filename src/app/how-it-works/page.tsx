@@ -28,6 +28,10 @@ const SECTIONS: { title: string; points: { term: string; text: string }[] }[] =
           text: "Everyone begins at 0% on the day they join and is scored from the next day. What your account did before you joined is not counted.",
         },
         {
+          term: "Leagues with a start date",
+          text: "A league can be started from a day in the past year. Everyone in it is then scored from that day, whenever they join, using the history their brokerage can supply.",
+        },
+        {
           term: "Quarters reset",
           text: "Standings start again every January, April, July and October. Finished quarters stay on your profile.",
         },
@@ -39,6 +43,10 @@ const SECTIONS: { title: string; points: { term: string; text: string }[] }[] =
         {
           term: "Partial",
           text: "When a brokerage gives incomplete data for a day, that stretch of your line is dotted and your score is labelled partial. You keep your rank. Holdfast says partial instead of guessing.",
+        },
+        {
+          term: "Estimated history",
+          text: "Days from before you signed up are rebuilt from your brokerage's own estimate of your account value, up to a year back, with deposits taken out the same way. They are close but not exact, and only the percentages are kept.",
         },
         {
           term: "Paused",

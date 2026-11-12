@@ -83,6 +83,11 @@ export const accounts = sqliteTable("accounts", {
   // False when the brokerage connection behind the account is disabled.
   connected: integer("connected", { mode: "boolean" }).notNull().default(true),
   lastSyncedOn: text("last_synced_on"), // YYYY-MM-DD
+  // The last day the brokerage was asked for this account's value history,
+  // and the first day that history filled in. Both YYYY-MM-DD. historyFrom
+  // stays null until a backfill has worked.
+  historyCheckedOn: text("history_checked_on"),
+  historyFrom: text("history_from"),
 });
 
 /**
@@ -123,6 +128,11 @@ export const dailyReturns = sqliteTable(
     weight: real("weight"),
     // Net deposits that day as a fraction of the starting balance.
     flowRate: real("flow_rate").notNull().default(0),
+    // True when the day was rebuilt from the brokerage's estimated value
+    // history, for days before Holdfast was watching the account.
+    estimated: integer("estimated", { mode: "boolean" })
+      .notNull()
+      .default(false),
   },
   (t) => [primaryKey({ columns: [t.accountId, t.date] })],
 );
@@ -172,6 +182,9 @@ export const leagues = sqliteTable("leagues", {
     onDelete: "set null",
   }),
   createdOn: text("created_on").notNull(), // YYYY-MM-DD
+  // Set when the league was started from a day before it was made. This is
+  // the first day scored, for every member, using backfilled history.
+  startOn: text("start_on"), // YYYY-MM-DD
 });
 
 export const leagueMembers = sqliteTable(

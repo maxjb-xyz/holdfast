@@ -3,6 +3,7 @@ import { and, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import * as t from "@/db/schema";
 import type { BadgeKey } from "@/lib/badges";
+import { needsHistory } from "@/lib/backfill";
 import { ACTIVITY_LOOKBACK_DAYS } from "@/lib/sync-math";
 import { addDays, toDateString } from "@/lib/quarters";
 import type { SnapTradeConfig } from "./env";
@@ -36,6 +37,7 @@ function chunks<T>(items: readonly T[], columns: number): T[][] {
 async function fetchAll(
   accessToken: string,
   today: string,
+  wantsHistory: (accountId: string) => boolean,
 ): Promise<{ accounts: FetchedAccount[]; listedIds: string[] }> {
   const api = new SnapTradeApi(accessToken);
   const [accounts, connections] = await Promise.all([
@@ -61,12 +63,15 @@ async function fetchAll(
     accounts.slice(0, MAX_ACCOUNTS).map(async (a) => {
       const connected =
         a.connectionId === null || !disabled.has(a.connectionId);
-      const [activities, positions] = connected
+      const [activities, positions, history] = connected
         ? await Promise.all([
             orNull(api.activities(a.id, since)),
             a.holdingsAvailable ? orNull(api.positions(a.id)) : null,
+            wantsHistory(a.id)
+              ? orNull(api.balanceHistory(a.id).then((h) => h ?? ("unavailable" as const)))
+              : undefined,
           ])
-        : [null, null];
+        : [null, null, undefined];
       return {
         id: a.id,
         label: `${a.institution} ${a.name}`.trim().slice(0, 60) || "Account",
@@ -76,6 +81,7 @@ async function fetchAll(
         transactionsThrough: a.transactionsReady ? a.transactionsThrough : null,
         activities,
         positions,
+        history,
       };
     }),
   );
@@ -119,13 +125,28 @@ export async function syncUser(
   const today = toDateString(new Date());
   const store = tokenStore(userId, config.encryptionKey);
 
+  // Which accounts still lack their history, so only those are asked for it.
+  const known = new Map(
+    (
+      await (await getDb())
+        .select({
+          id: t.accounts.id,
+          historyCheckedOn: t.accounts.historyCheckedOn,
+          historyFrom: t.accounts.historyFrom,
+        })
+        .from(t.accounts)
+        .where(eq(t.accounts.userId, userId))
+    ).map((a) => [a.id, a]),
+  );
+  const wantsHistory = (id: string) => needsHistory(known.get(id), today);
+
   let fetched: FetchedAccount[];
   let listedIds: string[];
   try {
     ({ accounts: fetched, listedIds } = await withAccessToken(
       store,
       (refreshToken) => refreshTokens(config, refreshToken),
-      (accessToken) => fetchAll(accessToken, today),
+      (accessToken) => fetchAll(accessToken, today, wantsHistory),
     ));
   } catch (error) {
     if (error instanceof ReconnectNeeded) {
@@ -188,7 +209,7 @@ export async function syncUser(
 
   const now = new Date();
   const writes = [];
-  for (const group of chunks(plan.accounts, 6)) {
+  for (const group of chunks(plan.accounts, 8)) {
     writes.push(
       db
         .insert(t.accounts)
@@ -200,6 +221,8 @@ export async function syncUser(
             counted: a.countedIfNew,
             connected: a.connected,
             lastSyncedOn: a.lastSyncedOn,
+            historyCheckedOn: a.historyCheckedOn,
+            historyFrom: a.historyFrom,
           })),
         )
         .onConflictDoUpdate({
@@ -208,6 +231,8 @@ export async function syncUser(
             label: sql`excluded.label`,
             connected: sql`excluded.connected`,
             lastSyncedOn: sql`excluded.last_synced_on`,
+            historyCheckedOn: sql`excluded.history_checked_on`,
+            historyFrom: sql`excluded.history_from`,
           },
           setWhere: eq(t.accounts.userId, userId),
         }),
@@ -237,7 +262,7 @@ export async function syncUser(
         }),
     );
   }
-  for (const group of chunks(plan.returns, 6)) {
+  for (const group of chunks(plan.returns, 7)) {
     writes.push(
       db
         .insert(t.dailyReturns)
@@ -249,6 +274,7 @@ export async function syncUser(
             partial: r.partial,
             weight: r.weight ?? null,
             flowRate: r.flowRate ?? 0,
+            estimated: false,
           })),
         )
         .onConflictDoUpdate({
@@ -258,8 +284,32 @@ export async function syncUser(
             partial: sql`excluded.partial`,
             weight: sql`excluded.weight`,
             flowRate: sql`excluded.flow_rate`,
+            estimated: sql`excluded.estimated`,
           },
         }),
+    );
+  }
+  // A year of estimated days per account goes in as one statement each, as
+  // JSON, to stay well inside D1's limits. A day that already has a return
+  // keeps it.
+  const backfilled = new Map<string, (string | number | null)[][]>();
+  for (const r of plan.backfill) {
+    const rows = backfilled.get(r.accountId) ?? [];
+    rows.push([r.date, r.dailyReturn, r.partial ? 1 : 0, r.weight ?? null, r.flowRate ?? 0]);
+    backfilled.set(r.accountId, rows);
+  }
+  for (const [accountId, rows] of backfilled) {
+    writes.push(
+      db.run(sql`
+        insert into daily_returns
+          (account_id, date, daily_return, partial, weight, flow_rate, estimated)
+        select ${accountId}, json_extract(value, '$[0]'), json_extract(value, '$[1]'),
+          json_extract(value, '$[2]'), json_extract(value, '$[3]'),
+          json_extract(value, '$[4]'), 1
+        from json_each(${JSON.stringify(rows)})
+        where exists (
+          select 1 from accounts a where a.id = ${accountId} and a.user_id = ${userId})
+        on conflict do nothing`),
     );
   }
   if (ids.length > 0 || ownedIds.length > 0) {

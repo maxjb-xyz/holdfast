@@ -120,6 +120,7 @@ async function loadPlayers(
             partial: r.partial,
             weight: r.weight,
             flowRate: r.flowRate,
+            estimated: r.estimated,
           })),
       );
     const rows = combineAccounts(perAccount).filter((r) => r.date <= day);
@@ -128,13 +129,16 @@ async function loadPlayers(
       snapshots[s.quarter] = s.facts;
     }
     const created = toDateString(person.createdAt);
+    // Backfilled history can reach back before the person signed up.
+    const firstRow = rows[0]?.date;
+    const since = firstRow && firstRow < created ? firstRow : created;
     return {
       userId: person.id,
       name: person.displayName,
       joinedOn: joined.get(person.id) ?? created,
       rows,
       pausedSince: person.pausedSince ?? undefined,
-      since: created,
+      since,
       facts: factRows.find((f) => f.userId === person.id)?.facts ?? EMPTY_FACTS,
       snapshots,
       earned: badgeRows
@@ -232,6 +236,7 @@ export async function loadLeague(
     inviteCode: league.inviteCode,
     ownerId: league.ownerId,
     createdOn: league.createdOn,
+    startOn: league.startOn ?? undefined,
     members: players,
   };
 }

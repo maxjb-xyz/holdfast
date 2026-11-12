@@ -60,6 +60,8 @@ export type League = {
   inviteCode: string | null;
   ownerId: string | null;
   createdOn: string;
+  /** Set when the league is scored from a day before it was made. */
+  startOn?: string;
   members: readonly Player[];
 };
 

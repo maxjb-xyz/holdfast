@@ -83,7 +83,12 @@ export async function createLeagueAction(formData: FormData): Promise<void> {
   if (!viewer) redirect("/");
   if (viewer.kind !== "user") redirect("/leagues?notice=signin");
   const { createLeague } = await import("./league-admin");
-  const made = await createLeague(viewer.id, String(formData.get("name") ?? ""));
+  const startOn = formData.get("startOn");
+  const made = await createLeague(
+    viewer.id,
+    String(formData.get("name") ?? ""),
+    typeof startOn === "string" ? startOn : null,
+  );
   redirect(made.ok ? "/leagues?notice=created" : `/leagues?notice=${made.reason}`);
 }
 
