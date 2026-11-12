@@ -8,7 +8,7 @@ SnapTrade OAuth API with read-only access.
 
 - **Leagues.** Make a league, invite up to seven friends by link, and watch a
   live leaderboard for the calendar quarter. Each member chooses which of
-  their linked accounts count.
+  their linked accounts count towards their profile.
 - **Fair scoring.** Scores are the quarter's return with deposits and
   withdrawals taken out, so adding money cannot move a score. Late joiners
   start at 0% on the day they join.
