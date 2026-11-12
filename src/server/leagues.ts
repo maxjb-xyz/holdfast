@@ -152,6 +152,10 @@ async function loadPlayers(
       accounts: mine.map((a) => ({
         id: a.id,
         label: a.label,
+        institution: a.institution,
+        name: a.name,
+        lastFour: a.lastFour,
+        positions: a.positionsCount,
         counted: a.counted,
         connected: a.connected,
       })),

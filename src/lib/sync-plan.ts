@@ -12,7 +12,9 @@ import {
   currentPrices,
   firstSeenDays,
   flowsByDay,
+  holdingsFrom,
   recomputeWindow,
+  securitiesHeld,
   weightsFor,
   type Activity,
   type Position,
@@ -22,6 +24,10 @@ import {
 export type FetchedAccount = {
   id: string;
   label: string;
+  /** The parts the label was built from, stored alongside it. */
+  institution?: string | null;
+  name?: string | null;
+  lastFour?: string | null;
   isPaper: boolean;
   /** True when the brokerage reports the account as closed or archived. */
   closed?: boolean;
@@ -70,6 +76,11 @@ export type SyncPlan = {
   accounts: {
     id: string;
     label: string;
+    institution: string | null;
+    name: string | null;
+    lastFour: string | null;
+    /** Null when the positions could not be read: the stored count stays. */
+    positionsCount: number | null;
     /** Used only when the account is new. The owner's choice is kept. */
     countedIfNew: boolean;
     connected: boolean;
@@ -121,6 +132,12 @@ export function planSync(input: SyncInput): SyncPlan {
     accounts.push({
       id: account.id,
       label: account.label,
+      institution: account.institution ?? null,
+      name: account.name ?? null,
+      lastFour: account.lastFour ?? null,
+      positionsCount: account.positions
+        ? securitiesHeld(account.positions)
+        : null,
       countedIfNew: !account.isPaper,
       connected: account.connected,
       lastSyncedOn: usable ? today : (before?.lastSyncedOn ?? null),
@@ -204,8 +221,14 @@ export function planSync(input: SyncInput): SyncPlan {
   const turned = storedFacts !== null && storedFacts.quarter !== quarter.key;
   if (readable) {
     const activities = counted.flatMap((a) => a.activities ?? []);
-    const positions = counted.flatMap((a) => a.positions ?? []);
-    const prices = currentPrices(positions);
+    const tagged = (a: FetchedAccount) =>
+      (a.positions ?? []).map((p) => ({ ...p, accountId: a.id }));
+    const positions = counted.flatMap(tagged);
+    // Connected accounts that are left out of leagues, where readable.
+    const others = fetched
+      .filter((a) => a.connected && !isCounted(a))
+      .flatMap(tagged);
+    const prices = currentPrices([...others, ...positions]);
     const startPrices =
       storedFacts && storedFacts.quarter === quarter.key
         ? // A holding first seen mid-quarter is measured from when it appeared.
@@ -231,13 +254,16 @@ export function planSync(input: SyncInput): SyncPlan {
       reach,
     );
     facts = {
-      facts: buildFacts({
-        activities,
-        positions,
-        startPrices,
-        firstSeen,
-        today,
-      }),
+      facts: {
+        ...buildFacts({
+          activities,
+          positions,
+          startPrices,
+          firstSeen,
+          today,
+        }),
+        otherHoldings: holdingsFrom(others, startPrices),
+      },
       quarter: quarter.key,
       startPrices,
       firstSeen,
@@ -278,7 +304,9 @@ export function planSync(input: SyncInput): SyncPlan {
         ? {
             ...storedFacts.facts,
             buyDates: facts.facts.buyDates.filter(within),
-            buyMonths: facts.facts.buyMonths.filter((m) => m <= closing.end.slice(0, 7)),
+            buyMonths: facts.facts.buyMonths.filter(
+              (m) => m <= closing.end.slice(0, 7),
+            ),
             dividendDates: facts.facts.dividendDates.filter(within),
           }
         : storedFacts.facts;
@@ -303,7 +331,9 @@ export function planSync(input: SyncInput): SyncPlan {
   const gone = storedAccounts.filter((a) => !listed.has(a.id));
   return {
     accounts,
-    goneAccountIds: gone.filter((a) => a.lastSyncedOn !== null).map((a) => a.id),
+    goneAccountIds: gone
+      .filter((a) => a.lastSyncedOn !== null)
+      .map((a) => a.id),
     forgetAccountIds: storedAccounts
       .filter((a) => a.lastSyncedOn === null && !followed.has(a.id))
       .map((a) => a.id),
