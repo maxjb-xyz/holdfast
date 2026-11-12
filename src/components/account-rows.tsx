@@ -32,9 +32,15 @@ export function AccountRows({
             >
               {a.title}
             </span>
-            {a.detail && (
-              <span className="truncate font-mono text-[11px] text-grey">
-                {a.detail}
+            {(a.brokerage || a.detail) && (
+              <span className="truncate text-[12.5px] text-dim">
+                {a.brokerage}
+                {a.detail && (
+                  <span className="font-mono text-[11px] text-grey">
+                    {a.brokerage ? " · " : ""}
+                    {a.detail}
+                  </span>
+                )}
               </span>
             )}
           </span>

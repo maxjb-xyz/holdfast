@@ -210,13 +210,20 @@ export default async function HoldingsRoute({
                           }
                           scroll={false}
                           aria-current={f.active ? "true" : undefined}
-                          className={`flex min-h-8 flex-none items-center rounded-full px-3 text-[12.5px] font-medium transition-colors ${
+                          className={`flex min-h-8 flex-none flex-col items-start justify-center px-3 text-[12.5px] font-medium transition-colors ${
+                            f.brokerage ? "rounded-[10px] py-1" : "rounded-full"
+                          } ${
                             f.active
                               ? "bg-chip text-text"
                               : "text-dim hover:text-text"
                           }`}
                         >
-                          {f.label}
+                          <span className="leading-[1.25]">{f.label}</span>
+                          {f.brokerage && (
+                            <span className="text-[11px] leading-[1.25] font-normal text-grey">
+                              {f.brokerage}
+                            </span>
+                          )}
                         </Link>
                       ))}
                     </div>

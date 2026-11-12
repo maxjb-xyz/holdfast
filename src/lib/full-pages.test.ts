@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEMO_VIEWER_ID, demoLeague } from "./demo";
 import {
-  accountGroups,
   accountLine,
   badgesPage,
   holdingsPage,
@@ -78,40 +77,43 @@ describe("badgesPage", () => {
   });
 });
 
-describe("accountLine and accountGroups", () => {
+describe("accountLine", () => {
   const base = { counted: true, connected: true };
   it("falls back to the label when the brokerage gave no details", () => {
-    const line = accountLine({ id: "a", label: "Account", ...base });
-    expect(line.title).toBe("Account");
+    const line = accountLine({ id: "a", label: "Brokerage", ...base });
+    expect(line.title).toBe("Brokerage");
+    expect(line.brokerage).toBeNull();
     expect(line.detail).toBe("");
   });
 
-  it("groups named accounts under their brokerage without repeating it", () => {
-    const groups = accountGroups([
-      {
-        id: "a",
-        label: "x",
-        ...base,
-        institution: "Fidelity",
-        name: "Roth IRA",
-        lastFour: "4471",
-        positions: 9,
-      },
-      {
-        id: "b",
-        label: "y",
-        ...base,
-        institution: "Fidelity",
-        name: "Individual",
-        lastFour: null,
-        positions: 1,
-      },
-      { id: "c", label: "Old account", ...base, connected: false },
-    ]);
-    expect(groups.map((g) => g.institution)).toEqual(["Fidelity", null]);
-    expect(groups[0].accounts[0].detail).toBe("··4471 · 9 positions");
-    expect(groups[0].accounts[1].detail).toBe("1 position");
-    expect(groups[1].accounts[0].detail).toBe("Link dropped");
+  it("puts the brokerage under the account's own name", () => {
+    const line = accountLine({
+      id: "a",
+      label: "Fidelity Roth IRA ··4471",
+      ...base,
+      institution: "Fidelity",
+      name: "Roth IRA",
+      lastFour: "4471",
+      positions: 9,
+    });
+    expect(line.title).toBe("Roth IRA");
+    expect(line.brokerage).toBe("Fidelity");
+    expect(line.detail).toBe("··4471 · 9 positions");
+  });
+
+  it("does not repeat the brokerage in the title of an unnamed account", () => {
+    const line = accountLine({
+      id: "a",
+      label: "Fidelity ··4471",
+      ...base,
+      connected: false,
+      institution: "Fidelity",
+      name: null,
+      lastFour: "4471",
+    });
+    expect(line.title).toBe("Account");
+    expect(line.brokerage).toBe("Fidelity");
+    expect(line.detail).toBe("··4471 · Link dropped");
   });
 });
 
@@ -126,6 +128,7 @@ describe("holdingsPage", () => {
       counted: true,
       connected: true,
       name: "Roth IRA",
+      institution: "Fidelity",
     },
     {
       id: "a2",
@@ -176,6 +179,10 @@ describe("holdingsPage", () => {
       "a2",
       "other",
     ]);
+    expect(page.filters.find((f) => f.key === "a1")?.brokerage).toBe(
+      "Fidelity",
+    );
+    expect(page.filters.find((f) => f.key === "a2")?.brokerage).toBeNull();
   });
 
   it("filters by account, shows left-out accounts apart, and ignores unknown scopes", () => {

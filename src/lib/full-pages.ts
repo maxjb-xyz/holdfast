@@ -39,7 +39,9 @@ export type AccountLine = {
   id: string;
   /** The account's own name, such as "Roth IRA". */
   title: string;
-  /** Brokerage, masked number and position count, as far as they are known. */
+  /** The brokerage that holds it, such as "Fidelity". Null when not known. */
+  brokerage: string | null;
+  /** Masked number and position count, as far as they are known. */
   detail: string;
   counted: boolean;
   connected: boolean;
@@ -47,43 +49,24 @@ export type AccountLine = {
 
 /** How one account reads in a list: its name, and a quieter line of detail. */
 export function accountLine(account: AccountView): AccountLine {
+  const brokerage = account.institution?.trim() || null;
   const parts: string[] = [];
-  if (account.name && account.institution) parts.push(account.institution);
   if (account.lastFour) parts.push(`··${account.lastFour}`);
   if (typeof account.positions === "number") {
     parts.push(plural(account.positions, "position"));
   }
   if (!account.connected) parts.push("Link dropped");
+  // Without a name of its own, the stored label would repeat the brokerage
+  // and number that the detail line already gives.
+  const plain = !account.name && (brokerage || account.lastFour);
   return {
     id: account.id,
-    title: account.name ?? account.label,
+    title: account.name || (plain ? "Account" : account.label),
+    brokerage,
     detail: parts.join(" · "),
     counted: account.counted,
     connected: account.connected,
   };
-}
-
-/** Accounts gathered under their brokerage, in the order given. */
-export function accountGroups(
-  list: readonly AccountView[],
-): { institution: string | null; accounts: AccountLine[] }[] {
-  const groups: { institution: string | null; accounts: AccountLine[] }[] = [];
-  for (const account of list) {
-    const key = account.name ? (account.institution ?? null) : null;
-    let group = groups.find((g) => g.institution === key);
-    if (!group) groups.push((group = { institution: key, accounts: [] }));
-    // Under a brokerage heading the detail line need not repeat its name.
-    const line = accountLine(account);
-    group.accounts.push(
-      key === null
-        ? line
-        : {
-            ...line,
-            detail: line.detail.replace(`${key} · `, "").replace(key, ""),
-          },
-    );
-  }
-  return groups;
 }
 
 // ---------------------------------------------------------------- leagues
@@ -264,7 +247,13 @@ export type HoldingsPage = {
   rows: HoldingRow[];
   scope: string;
   /** Empty when there is nothing to choose between. */
-  filters: { key: string; label: string; active: boolean }[];
+  filters: {
+    key: string;
+    label: string;
+    /** The brokerage, shown under an account's name. */
+    brokerage?: string | null;
+    active: boolean;
+  }[];
   /** How many positions and accounts the counted portfolio has. */
   positions: number;
   countedAccounts: number;
@@ -286,7 +275,8 @@ export function holdingsPage(
   const facts: FactsMore = player.facts;
   const counted: readonly HoldingMore[] = facts.holdings;
   const other = facts.otherHoldings ?? [];
-  const title = new Map(accounts.map((a) => [a.id, accountLine(a).title]));
+  const lines = new Map(accounts.map((a) => [a.id, accountLine(a)]));
+  const title = new Map([...lines].map(([id, l]) => [id, l.title]));
   const withHoldings = accounts.filter(
     (a) => a.counted && counted.some((h) => h.accounts?.includes(a.id)),
   );
@@ -299,6 +289,7 @@ export function holdingsPage(
         filters.push({
           key: a.id,
           label: title.get(a.id) ?? a.label,
+          brokerage: lines.get(a.id)?.brokerage ?? null,
           active: false,
         });
       }
