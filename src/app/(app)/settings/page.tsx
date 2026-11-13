@@ -38,6 +38,8 @@ const NOTICES: Record<string, string> = {
   name: "A name needs at least one letter or number.",
   "sync-synced": "Synced. Your numbers are up to date.",
   "sync-busy": "A sync ran a moment ago. Give it a minute and try again.",
+  "sync-running":
+    "A sync is still running. Your numbers update when it finishes, usually within a minute.",
   "sync-reconnect":
     "SnapTrade needs you to sign in again before Holdfast can read your accounts.",
   "sync-failed": "The sync did not finish. Please try again in a minute.",
@@ -140,6 +142,11 @@ export default async function SettingsRoute({
           </form>
         </div>
         <Notice>{notice}</Notice>
+        {user?.lastSyncError && !needsReconnect && (
+          <Notice>
+            The last sync stopped short: {user.lastSyncError}
+          </Notice>
+        )}
         {needsReconnect && (
           <Notice>
             Your brokerage link dropped, so your rank is paused.{" "}

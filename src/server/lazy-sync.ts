@@ -3,7 +3,8 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { accounts } from "@/db/schema";
-import { snaptradeConfig } from "./env";
+import { cronSecret } from "./cron";
+import { snaptradeConfig, type SnapTradeConfig } from "./env";
 import type { SessionUser } from "./session";
 import { syncUser } from "./sync";
 
@@ -63,13 +64,46 @@ export async function syncIfStale(user: SessionUser): Promise<void> {
     if (!stale && !repair) return;
     const config = await snaptradeConfig();
     if (!config) return;
-    const { ctx } = await getCloudflareContext({ async: true });
+    const minGapMs = stale ? STALE_MS / 4 : DETAILS_RETRY_MS;
+    const { ctx, env } = await getCloudflareContext({ async: true });
     ctx.waitUntil(
-      syncUser(user.id, config, {
-        minGapMs: stale ? STALE_MS / 4 : DETAILS_RETRY_MS,
-      }).catch((error) => console.error("background sync failed", error)),
+      inOwnRequest(user.id, config, minGapMs, env).catch((error) =>
+        console.error("background sync failed", error),
+      ),
     );
   } catch (error) {
     console.error("could not start background sync", error);
   }
+}
+
+/**
+ * Runs the sync as a request to this Worker's own sync route, so it is not
+ * held to the few seconds a page gets to finish background work after it is
+ * sent. Falls back to syncing in place under `next dev`.
+ */
+async function inOwnRequest(
+  userId: string,
+  config: SnapTradeConfig,
+  minGapMs: number,
+  env: unknown,
+): Promise<void> {
+  const self =
+    process.env.NODE_ENV === "development"
+      ? undefined
+      : (env as { WORKER_SELF_REFERENCE?: Fetcher }).WORKER_SELF_REFERENCE;
+  if (!self) {
+    await syncUser(userId, config, { minGapMs });
+    return;
+  }
+  const query = new URLSearchParams({ user: userId, gap: String(minGapMs) });
+  const response = await self.fetch(
+    `https://holdfast.internal/api/cron/sync?${query}`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${await cronSecret(config.encryptionKey)}`,
+      },
+    },
+  );
+  if (!response.ok) throw new Error(`sync answered ${response.status}`);
 }
