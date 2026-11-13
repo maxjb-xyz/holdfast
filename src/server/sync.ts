@@ -350,13 +350,16 @@ async function runSync(
       today,
     });
     if (requests.length > 0) {
-      const baselines = await lookUpBaselines(requests);
+      const { found: baselines, asked } = await lookUpBaselines(requests);
       // Found ones are not asked again this quarter; misses, tomorrow.
+      // Ones not reached this time stay unmarked, for the next sync.
       const lookedUp = Object.fromEntries(
-        requests.map((r) => [
-          r.symbol,
-          r.symbol in baselines ? r.on : missMark(r.on, today),
-        ]),
+        requests
+          .filter((r) => asked.has(r.symbol))
+          .map((r) => [
+            r.symbol,
+            r.symbol in baselines ? r.on : missMark(r.on, today),
+          ]),
       );
       plan = planSync({ ...planInput, baselines, lookedUp });
     }

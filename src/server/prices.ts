@@ -214,9 +214,11 @@ async function closeFor(
 
 /** The last close on or before `on`. */
 function lastOnOrBefore(rows: readonly Close[], on: string): number | null {
+  const earliest = addDays(on, -LOOKBACK_DAYS);
   let best: Close | null = null;
   for (const row of rows) {
-    if (row.date <= on && (!best || row.date > best.date)) best = row;
+    if (row.date < earliest || row.date > on) continue;
+    if (!best || row.date > best.date) best = row;
   }
   return best?.close ?? null;
 }
@@ -228,9 +230,14 @@ function lastOnOrBefore(rows: readonly Close[], on: string): number | null {
  */
 export async function lookUpBaselines(
   requests: readonly CloseRequest[],
-): Promise<Record<string, Baseline>> {
-  if (requests.length === 0) return {};
+): Promise<{
+  found: Record<string, Baseline>;
+  /** The symbols actually asked about, found or not. */
+  asked: Set<string>;
+}> {
   const found: Record<string, Baseline> = {};
+  const asked = new Set<string>();
+  if (requests.length === 0) return { found, asked };
   const keep = (r: CloseRequest, close: number | null) => {
     if (close !== null && plausibleClose(close, r.price)) {
       found[r.symbol] = { from: r.from, price: close };
@@ -247,6 +254,7 @@ export async function lookUpBaselines(
       try {
         const series = await sparkCloses(group.map(yahooSymbol));
         for (const r of group) {
+          asked.add(r.symbol);
           const rows = series.get(yahooSymbol(r));
           if (rows) keep(r, lastOnOrBefore(rows, r.on));
         }
@@ -258,12 +266,15 @@ export async function lookUpBaselines(
 
   // Whatever a batch could not answer, and listings it cannot check, one
   // at a time with the currency checked, the largest first.
+  // Holdings never asked before go ahead of ones a batch just missed.
   const single = requests
     .filter((r) => !(r.symbol in found))
+    .sort((a, b) => Number(asked.has(a.symbol)) - Number(asked.has(b.symbol)))
     .slice(0, MAX_SINGLE_LOOKUPS);
+  for (const r of single) asked.add(r.symbol);
   if (single.length > 0) {
     const key = await tiingoKey();
     await Promise.all(single.map(async (r) => keep(r, await closeFor(r, key))));
   }
-  return found;
+  return { found, asked };
 }

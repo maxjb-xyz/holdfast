@@ -99,13 +99,14 @@ export function missMark(on: string, today: string): string {
 
 /**
  * The ticker Yahoo knows a US share class by: "BRK.B" is "BRK-B" there.
- * Exchange suffixes such as ".TO" are left alone.
+ * Exchange suffixes such as ".TO" or ".L" are left alone: share classes
+ * are A to C.
  */
 export function yahooSymbol(
   r: Pick<CloseRequest, "quoteSymbol" | "currency">,
 ): string {
   const s = r.quoteSymbol;
-  if (r.currency === "USD" && /^[A-Z]+\.[A-Z]$/.test(s))
+  if (r.currency === "USD" && /^[A-Z]+\.[A-C]$/.test(s))
     return s.replace(".", "-");
   return s;
 }

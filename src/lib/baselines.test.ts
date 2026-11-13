@@ -158,5 +158,8 @@ describe("yahooSymbol", () => {
       "VAB.TO",
     );
     expect(yahooSymbol({ quoteSymbol: "VTI" })).toBe("VTI");
+    expect(yahooSymbol({ quoteSymbol: "CSPX.L", currency: "USD" })).toBe(
+      "CSPX.L",
+    );
   });
 });
