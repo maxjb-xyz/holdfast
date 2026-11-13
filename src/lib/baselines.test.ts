@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { closeRequests, plausibleClose } from "./baselines";
+import {
+  closeRequests,
+  missMark,
+  plausibleClose,
+  yahooSymbol,
+} from "./baselines";
 
 const TODAY = "2026-11-13";
 const pos = (symbol: string, units: number, price: number, extra = {}) => ({
@@ -94,8 +99,31 @@ describe("closeRequests", () => {
     ).toEqual([]);
   });
 
+  it("tries a miss again the next day, and a stale success again", () => {
+    const base = {
+      activities: [],
+      positions: [pos("VTI", 2, 300)],
+      firstSeen: { VTI: "2025-03-01" },
+      startPriceDays: { VTI: "2026-11-12" },
+    };
+    const missed = {
+      ...base,
+      closeLookups: { VTI: missMark("2026-09-30", "2026-11-13") },
+    };
+    expect(closeRequests({ ...missed, today: "2026-11-13" })).toEqual([]);
+    expect(closeRequests({ ...missed, today: "2026-11-14" })).toHaveLength(1);
+    // Marked as asked, but the start price is still Holdfast's own: ask.
+    expect(
+      closeRequests({
+        ...base,
+        closeLookups: { VTI: "2026-09-30" },
+        today: TODAY,
+      }),
+    ).toHaveLength(1);
+  });
+
   it("puts the largest holdings first and caps the lookups", () => {
-    const positions = Array.from({ length: 14 }, (_, i) =>
+    const positions = Array.from({ length: 120 }, (_, i) =>
       pos(`S${i}`, 1, i + 1),
     );
     const requests = closeRequests({
@@ -108,8 +136,8 @@ describe("closeRequests", () => {
       closeLookups: {},
       today: TODAY,
     });
-    expect(requests).toHaveLength(10);
-    expect(requests[0].symbol).toBe("S13");
+    expect(requests).toHaveLength(100);
+    expect(requests[0].symbol).toBe("S119");
   });
 });
 
@@ -118,5 +146,20 @@ describe("plausibleClose", () => {
     expect(plausibleClose(95, 100)).toBe(true);
     expect(plausibleClose(10, 100)).toBe(false);
     expect(plausibleClose(0, 100)).toBe(false);
+  });
+});
+
+describe("yahooSymbol", () => {
+  it("spells US share classes Yahoo's way and leaves exchange suffixes", () => {
+    expect(yahooSymbol({ quoteSymbol: "BRK.B", currency: "USD" })).toBe(
+      "BRK-B",
+    );
+    expect(yahooSymbol({ quoteSymbol: "VAB.TO", currency: "CAD" })).toBe(
+      "VAB.TO",
+    );
+    expect(yahooSymbol({ quoteSymbol: "VTI" })).toBe("VTI");
+    expect(yahooSymbol({ quoteSymbol: "CSPX.L", currency: "USD" })).toBe(
+      "CSPX.L",
+    );
   });
 });

@@ -2,10 +2,16 @@ import "server-only";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import {
   plausibleClose,
+  yahooSymbol,
   type Baseline,
   type CloseRequest,
 } from "../lib/baselines";
 import { addDays, toDateString } from "../lib/quarters";
+
+/** Symbols per Yahoo spark request, its own limit. */
+const SPARK_BATCH = 20;
+/** Holdings looked up one at a time per sync, where a batch cannot do. */
+const MAX_SINGLE_LOOKUPS = 10;
 
 /** Days looked back for a close, to step over weekends and holidays. */
 const LOOKBACK_DAYS = 10;
@@ -56,6 +62,60 @@ async function yahooCloses(
     });
   });
   return out;
+}
+
+/**
+ * Six months of daily closes for up to 20 symbols in one request, from
+ * Yahoo's spark endpoint. It gives no currency, so it is only used where
+ * the ticker alone settles the listing (see `batchable`).
+ */
+async function sparkCloses(
+  symbols: readonly string[],
+): Promise<Map<string, Close[]>> {
+  const url =
+    `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${symbols.map(encodeURIComponent).join(",")}` +
+    `&range=6mo&interval=1d`;
+  const res = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; Holdfast)" },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`yahoo spark ${res.status}`);
+  const body = (await res.json()) as Record<
+    string,
+    { timestamp?: number[]; close?: (number | null)[] } | null
+  >;
+  const out = new Map<string, Close[]>();
+  for (const [symbol, series] of Object.entries(body ?? {})) {
+    const stamps = series?.timestamp ?? [];
+    const closes = series?.close ?? [];
+    const rows: Close[] = [];
+    stamps.forEach((t, i) => {
+      const c = closes[i];
+      // Bars are stamped at the open, which is the same calendar day in
+      // UTC for the Americas and Europe; an Asian open can be the day
+      // before, so those listings are not batched.
+      if (typeof c === "number") {
+        rows.push({
+          date: new Date(t * 1000).toISOString().slice(0, 10),
+          close: c,
+        });
+      }
+    });
+    out.set(symbol, rows);
+  }
+  return out;
+}
+
+/**
+ * Whether a holding can go in a batch: a US dollar listing, or a Canadian,
+ * US or European one named with its exchange suffix. Anything else needs
+ * the single lookup, which checks the currency.
+ */
+function batchable(r: CloseRequest): boolean {
+  if (r.currency === "USD" || r.currency === "CAD" || r.currency === "EUR") {
+    return r.currency === "USD" || r.quoteSymbol.includes(".");
+  }
+  return r.currency === undefined && !r.quoteSymbol.includes(".");
 }
 
 /**
@@ -136,7 +196,7 @@ async function closeFor(
     return last.close;
   };
   try {
-    const found = pick(await yahooCloses(r.quoteSymbol, start, r.on));
+    const found = pick(await yahooCloses(yahooSymbol(r), start, r.on));
     if (found !== null) return found;
   } catch (error) {
     console.warn(`price lookup for ${r.symbol} failed`, error);
@@ -152,22 +212,69 @@ async function closeFor(
   }
 }
 
+/** The last close on or before `on`. */
+function lastOnOrBefore(rows: readonly Close[], on: string): number | null {
+  const earliest = addDays(on, -LOOKBACK_DAYS);
+  let best: Close | null = null;
+  for (const row of rows) {
+    if (row.date < earliest || row.date > on) continue;
+    if (!best || row.date > best.date) best = row;
+  }
+  return best?.close ?? null;
+}
+
 /**
- * Looks up the closes asked for. A lookup that fails or looks wrong is left
- * out, and the holding keeps the price Holdfast saw itself.
+ * Looks up the closes asked for: most in batches of 20, the rest one at a
+ * time. A lookup that fails or looks wrong is left out, and the holding
+ * keeps the price Holdfast saw itself.
  */
 export async function lookUpBaselines(
   requests: readonly CloseRequest[],
-): Promise<Record<string, Baseline>> {
-  if (requests.length === 0) return {};
-  const key = await tiingoKey();
-  const found = await Promise.all(
-    requests.map(async (r) => {
-      const close = await closeFor(r, key);
-      return close !== null && plausibleClose(close, r.price)
-        ? ([r.symbol, { from: r.from, price: close }] as const)
-        : null;
+): Promise<{
+  found: Record<string, Baseline>;
+  /** The symbols actually asked about, found or not. */
+  asked: Set<string>;
+}> {
+  const found: Record<string, Baseline> = {};
+  const asked = new Set<string>();
+  if (requests.length === 0) return { found, asked };
+  const keep = (r: CloseRequest, close: number | null) => {
+    if (close !== null && plausibleClose(close, r.price)) {
+      found[r.symbol] = { from: r.from, price: close };
+    }
+  };
+
+  const batch = requests.filter(batchable);
+  const groups: CloseRequest[][] = [];
+  for (let i = 0; i < batch.length; i += SPARK_BATCH) {
+    groups.push(batch.slice(i, i + SPARK_BATCH));
+  }
+  await Promise.all(
+    groups.map(async (group) => {
+      try {
+        const series = await sparkCloses(group.map(yahooSymbol));
+        for (const r of group) {
+          asked.add(r.symbol);
+          const rows = series.get(yahooSymbol(r));
+          if (rows) keep(r, lastOnOrBefore(rows, r.on));
+        }
+      } catch (error) {
+        console.warn("batched price lookup failed", error);
+      }
     }),
   );
-  return Object.fromEntries(found.filter((f) => f !== null));
+
+  // Whatever a batch could not answer, and listings it cannot check, one
+  // at a time with the currency checked, the largest first.
+  // Holdings never asked before go ahead of ones a batch just missed.
+  const single = requests
+    .filter((r) => !(r.symbol in found))
+    .sort((a, b) => Number(asked.has(a.symbol)) - Number(asked.has(b.symbol)))
+    .slice(0, MAX_SINGLE_LOOKUPS);
+  for (const r of single) asked.add(r.symbol);
+  if (single.length > 0) {
+    const key = await tiingoKey();
+    await Promise.all(single.map(async (r) => keep(r, await closeFor(r, key))));
+  }
+  return { found, asked };
 }

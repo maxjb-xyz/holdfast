@@ -10,8 +10,11 @@
 import { heldSince, type Activity, type Position } from "./sync-math";
 import { addDays, quarterOf } from "./quarters";
 
-/** Price lookups per sync, to stay inside a Worker's request budget. */
-export const MAX_CLOSE_LOOKUPS = 10;
+/**
+ * Holdings looked up per sync. Most are answered 20 to a request, so this
+ * is far fewer requests than holdings.
+ */
+export const MAX_CLOSE_LOOKUPS = 100;
 
 export type CloseRequest = {
   symbol: string;
@@ -64,11 +67,14 @@ export function closeRequests(input: {
     const from = whole ? quarter.start : since;
     if (from >= input.today) continue;
     const on = whole ? addDays(quarter.start, -1) : since;
-    // Asked once per quarter and day, whether or not it was found.
-    if (input.closeLookups[symbol] === on) continue;
-    // Already measured from earlier than this would give.
     const have = input.startPriceDays[symbol];
+    const asked = input.closeLookups[symbol];
+    // Already measured from earlier than this would give.
     if (have !== undefined && have < from) continue;
+    // Found already: the start price is that close.
+    if (asked === on && have !== undefined && have <= from) continue;
+    // Not found today already: tried again tomorrow.
+    if (asked === missMark(on, input.today)) continue;
     out.push({
       symbol,
       on,
@@ -84,6 +90,25 @@ export function closeRequests(input: {
   return out
     .sort((a, b) => (value.get(b.symbol) ?? 0) - (value.get(a.symbol) ?? 0))
     .slice(0, MAX_CLOSE_LOOKUPS);
+}
+
+/** How a lookup that found nothing is remembered, so it is retried daily. */
+export function missMark(on: string, today: string): string {
+  return `${on}@${today}`;
+}
+
+/**
+ * The ticker Yahoo knows a US share class by: "BRK.B" is "BRK-B" there.
+ * Exchange suffixes such as ".TO" or ".L" are left alone: share classes
+ * are A to C.
+ */
+export function yahooSymbol(
+  r: Pick<CloseRequest, "quoteSymbol" | "currency">,
+): string {
+  const s = r.quoteSymbol;
+  if (r.currency === "USD" && /^[A-Z]+\.[A-C]$/.test(s))
+    return s.replace(".", "-");
+  return s;
 }
 
 /**
