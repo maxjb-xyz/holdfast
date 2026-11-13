@@ -18,7 +18,7 @@ import { SnapTradeApi, type SnapAccount } from "./snaptrade/api";
 import { refreshTokens } from "./snaptrade/oauth";
 import { pauseForReconnect, tokenStore } from "./snaptrade/token-store";
 import { planSync, type FetchedAccount } from "@/lib/sync-plan";
-import { closeRequests } from "@/lib/baselines";
+import { closeRequests, missMark } from "@/lib/baselines";
 import { lookUpBaselines } from "./prices";
 
 /** Accounts read per person, to stay inside a Worker's request budget. */
@@ -351,8 +351,12 @@ async function runSync(
     });
     if (requests.length > 0) {
       const baselines = await lookUpBaselines(requests);
+      // Found ones are not asked again this quarter; misses, tomorrow.
       const lookedUp = Object.fromEntries(
-        requests.map((r) => [r.symbol, r.on]),
+        requests.map((r) => [
+          r.symbol,
+          r.symbol in baselines ? r.on : missMark(r.on, today),
+        ]),
       );
       plan = planSync({ ...planInput, baselines, lookedUp });
     }

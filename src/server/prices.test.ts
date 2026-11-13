@@ -91,4 +91,40 @@ describe("lookUpBaselines", () => {
       await lookUpBaselines([{ ...request, currency: undefined }]),
     ).toEqual({});
   });
+
+  it("answers many holdings from one batched request", async () => {
+    const fetch = vi.fn(async (url: string) => {
+      expect(String(url)).toContain("/spark?symbols=VTI,BRK-B,VAB.TO");
+      const series = (closes: number[]) => ({
+        timestamp: ["2026-09-29", "2026-09-30", "2026-10-01"].map(
+          (d) => Date.parse(`${d}T13:30:00Z`) / 1000,
+        ),
+        close: closes,
+      });
+      return Response.json({
+        VTI: series([280, 282, 290]),
+        "BRK-B": series([480, 485, 490]),
+        "VAB.TO": series([22, 22.1, 22.2]),
+      });
+    });
+    vi.stubGlobal("fetch", fetch);
+    expect(
+      await lookUpBaselines([
+        request,
+        { ...request, symbol: "BRK.B", quoteSymbol: "BRK.B", price: 500 },
+        {
+          ...request,
+          symbol: "VAB",
+          quoteSymbol: "VAB.TO",
+          currency: "CAD",
+          price: 23,
+        },
+      ]),
+    ).toEqual({
+      VTI: { from: "2026-10-01", price: 282 },
+      "BRK.B": { from: "2026-10-01", price: 485 },
+      VAB: { from: "2026-10-01", price: 22.1 },
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
 });
