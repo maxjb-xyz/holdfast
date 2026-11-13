@@ -56,6 +56,13 @@ export type SnapPosition = {
   cashEquivalent: boolean;
   /** What the security is called, such as "Apple Inc.". */
   name: string | null;
+  /**
+   * The ticker with its exchange suffix, such as "SHOP.TO", for price
+   * lookups. Absent when it is the same as `symbol`.
+   */
+  quoteSymbol?: string;
+  /** The currency the security trades in, such as "USD", where given. */
+  currency?: string;
 };
 
 /** One day of an account's estimated total value. */
@@ -272,8 +279,22 @@ export class SnapTradeApi {
           price,
           cashEquivalent: p.cash_equivalent === true,
           name: str(instrument.description),
+          ...extras(instrument, symbol),
         },
       ];
     });
   }
+}
+
+/** The lookup ticker and trading currency, kept only when they add something. */
+function extras(
+  instrument: Record<string, unknown>,
+  symbol: string,
+): { quoteSymbol?: string; currency?: string } {
+  const out: { quoteSymbol?: string; currency?: string } = {};
+  const full = str(instrument.symbol);
+  if (full && full !== symbol) out.quoteSymbol = full;
+  const currency = str(obj(instrument.currency).code);
+  if (currency) out.currency = currency;
+  return out;
 }

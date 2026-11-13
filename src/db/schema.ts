@@ -167,6 +167,12 @@ export const userFacts = sqliteTable("user_facts", {
     .$type<Record<string, string>>()
     .notNull()
     .default({}),
+  // The close each symbol was last looked up for this quarter, found or
+  // not, so a lookup is made once rather than on every sync.
+  closeLookups: text("close_lookups", { mode: "json" })
+    .$type<Record<string, string>>()
+    .notNull()
+    .default({}),
   // The day each current holding was first seen, for the One Year Hold badge
   // when the brokerage's history does not reach back to the purchase.
   firstSeen: text("first_seen", { mode: "json" })

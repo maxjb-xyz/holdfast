@@ -314,6 +314,65 @@ describe("planSync", () => {
     expect(back.facts?.startPriceDays).toEqual({ VTI: "2026-10-01", GONE: "2026-10-01" });
   });
 
+  it("replaces a start price taken late with an earlier close it was given", () => {
+    const facts = { buyMonths: [], buyDates: [], dividendDates: [], holdings: [], holdingSince: null };
+    const plan = planSync(
+      input({
+        storedFacts: {
+          facts,
+          quarter: "2026-Q4",
+          startPrices: { VTI: 240, AAPL: 100 },
+          startPriceDays: { VTI: "2026-11-10", AAPL: "2026-10-01" },
+          firstSeen: {},
+        },
+        baselines: {
+          VTI: { from: "2026-10-01", price: 200 },
+          // Not earlier than what is kept, so ignored.
+          AAPL: { from: "2026-10-05", price: 1 },
+          // Not held, so ignored.
+          GONE: { from: "2026-10-01", price: 5 },
+        },
+        fetched: [
+          account({
+            positions: [
+              { symbol: "VTI", units: 2, price: 250, cashEquivalent: false },
+              { symbol: "AAPL", units: 1, price: 110, cashEquivalent: false },
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(plan.facts?.startPrices).toEqual({ VTI: 200, AAPL: 100 });
+    expect(plan.facts?.closeLookups).toEqual({});
+    expect(plan.facts?.startPriceDays).toEqual({ VTI: "2026-10-01", AAPL: "2026-10-01" });
+    const vti = plan.facts?.facts.holdings.find((h) => h.ticker === "VTI");
+    expect(vti).toMatchObject({ changeFrom: "2026-10-01" });
+    expect(vti?.change).toBeCloseTo(0.25, 10);
+  });
+
+  it("remembers which closes were looked up this quarter, and forgets them when it turns", () => {
+    const facts = { buyMonths: [], buyDates: [], dividendDates: [], holdings: [], holdingSince: null };
+    const positions = [
+      { symbol: "VTI", units: 2, price: 250, cashEquivalent: false },
+      { symbol: "AAPL", units: 1, price: 110, cashEquivalent: false },
+    ];
+    const plan = planSync(
+      input({
+        storedFacts: { facts, quarter: "2026-Q4", startPrices: {}, closeLookups: { VTI: "2026-09-30", GONE: "2026-09-30" }, firstSeen: {} },
+        lookedUp: { AAPL: "2026-09-30" },
+        fetched: [account({ positions })],
+      }),
+    );
+    expect(plan.facts?.closeLookups).toEqual({ VTI: "2026-09-30", AAPL: "2026-09-30" });
+    const turned = planSync(
+      input({
+        storedFacts: { facts, quarter: "2026-Q3", startPrices: {}, closeLookups: { VTI: "2026-06-30" }, firstSeen: {} },
+        fetched: [account({ positions })],
+      }),
+    );
+    expect(turned.facts?.closeLookups).toEqual({});
+  });
+
   it("retakes start prices stored without the day they were taken", () => {
     const facts = { buyMonths: [], buyDates: [], dividendDates: [], holdings: [], holdingSince: null };
     const plan = planSync(

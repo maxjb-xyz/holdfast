@@ -18,6 +18,8 @@ import { SnapTradeApi, type SnapAccount } from "./snaptrade/api";
 import { refreshTokens } from "./snaptrade/oauth";
 import { pauseForReconnect, tokenStore } from "./snaptrade/token-store";
 import { planSync, type FetchedAccount } from "@/lib/sync-plan";
+import { closeRequests } from "@/lib/baselines";
+import { lookUpBaselines } from "./prices";
 
 /** Accounts read per person, to stay inside a Worker's request budget. */
 const MAX_ACCOUNTS = 12;
@@ -94,7 +96,11 @@ async function fetchAll(
             orNull(api.activities(a.id, since)),
             a.holdingsAvailable ? orNull(api.positions(a.id)) : null,
             readHistory
-              ? orNull(api.balanceHistory(a.id).then((h) => h ?? ("unavailable" as const)))
+              ? orNull(
+                  api
+                    .balanceHistory(a.id)
+                    .then((h) => h ?? ("unavailable" as const)),
+                )
               : undefined,
           ])
         : [null, null, undefined];
@@ -163,7 +169,9 @@ export async function syncUser(
     // Only this run's claim is written to: a newer sync owns the row now.
     const message = error instanceof Error ? error.message : String(error);
     try {
-      await (await getDb())
+      await (
+        await getDb()
+      )
         .update(t.users)
         .set({ lastSyncError: message.replace(/\s+/g, " ").slice(0, 200) })
         .where(and(eq(t.users.id, userId), eq(t.users.syncClaimedAt, claim)));
@@ -182,7 +190,9 @@ export async function syncOutcome(userId: string): Promise<{
   state: "done" | "failed" | "running" | "none";
   ageMs: number;
 }> {
-  const [row] = await (await getDb())
+  const [row] = await (
+    await getDb()
+  )
     .select({
       claimed: t.users.syncClaimedAt,
       synced: t.users.lastSyncedAt,
@@ -217,7 +227,9 @@ async function runSync(
   // Which accounts still lack their history, so only those are asked for it.
   const known = new Map(
     (
-      await (await getDb())
+      await (
+        await getDb()
+      )
         .select({
           id: t.accounts.id,
           historyCheckedOn: t.accounts.historyCheckedOn,
@@ -313,7 +325,7 @@ async function runSync(
     for (const r of rows) firstMeasured[r.accountId] = r.first;
   }
 
-  const plan = planSync({
+  const planInput = {
     today,
     firstMeasured,
     fetched: mine,
@@ -323,7 +335,28 @@ async function runSync(
     pausedSince: user[0].pausedSince,
     listedIds,
     heldBadges: heldBadges.map((b) => b.key as BadgeKey),
-  });
+  };
+  let plan = planSync(planInput);
+  // Start prices Holdfast saw itself are replaced with real closes from the
+  // quarter's start (or the day a holding was opened), when it can find them.
+  if (plan.facts) {
+    const readable = mine.filter((a) => a.connected);
+    const requests = closeRequests({
+      activities: readable.flatMap((a) => a.activities ?? []),
+      positions: readable.flatMap((a) => a.positions ?? []),
+      firstSeen: plan.facts.firstSeen,
+      startPriceDays: plan.facts.startPriceDays ?? {},
+      closeLookups: plan.facts.closeLookups ?? {},
+      today,
+    });
+    if (requests.length > 0) {
+      const baselines = await lookUpBaselines(requests);
+      const lookedUp = Object.fromEntries(
+        requests.map((r) => [r.symbol, r.on]),
+      );
+      plan = planSync({ ...planInput, baselines, lookedUp });
+    }
+  }
 
   const now = new Date();
   const writes = [];
@@ -434,7 +467,13 @@ async function runSync(
   const backfilled = new Map<string, (string | number | null)[][]>();
   for (const r of plan.backfill) {
     const rows = backfilled.get(r.accountId) ?? [];
-    rows.push([r.date, r.dailyReturn, r.partial ? 1 : 0, r.weight ?? null, r.flowRate ?? 0]);
+    rows.push([
+      r.date,
+      r.dailyReturn,
+      r.partial ? 1 : 0,
+      r.weight ?? null,
+      r.flowRate ?? 0,
+    ]);
     backfilled.set(r.accountId, rows);
   }
   for (const [accountId, rows] of backfilled) {

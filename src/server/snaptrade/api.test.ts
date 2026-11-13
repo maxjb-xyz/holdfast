@@ -207,6 +207,7 @@ describe("SnapTradeApi.positions", () => {
         price: 22,
         cashEquivalent: false,
         name: null,
+        quoteSymbol: "VAB.TO",
       },
       {
         symbol: "SPAXX",
@@ -229,7 +230,7 @@ describe("SnapTradeApi.positions", () => {
       ],
     }).positions("a1");
     expect(positions).toEqual([
-      { symbol: "VAB", units: 4, price: 22, cashEquivalent: false, name: null },
+      { symbol: "VAB", units: 4, price: 22, cashEquivalent: false, name: null, quoteSymbol: "VAB.TO" },
     ]);
   });
 });

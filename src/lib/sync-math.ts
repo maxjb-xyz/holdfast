@@ -26,6 +26,10 @@ export type Position = {
   name?: string | null;
   /** The account that holds it. */
   accountId?: string;
+  /** The ticker with its exchange suffix, for price lookups. */
+  quoteSymbol?: string;
+  /** The currency the security trades in, where given. */
+  currency?: string;
 };
 
 export type Snapshot = { date: string; balance: number };
@@ -159,7 +163,7 @@ export function weightsFor(
  * `firstSeen` (see `firstSeenDays`). Holdfast does not assume a holding is
  * older than that.
  */
-function heldSince(
+export function heldSince(
   activities: readonly Activity[],
   positions: readonly Position[],
   firstSeen: Readonly<Record<string, string>>,

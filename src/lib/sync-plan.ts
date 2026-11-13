@@ -67,6 +67,8 @@ export type StoredFacts = {
    * day comes from before days were kept, so its baseline is retaken.
    */
   startPriceDays?: Record<string, string>;
+  /** The day whose close was last looked up for each symbol, this quarter. */
+  closeLookups?: Record<string, string>;
   firstSeen: Record<string, string>;
 };
 
@@ -77,6 +79,13 @@ export type SyncInput = {
   /** Stored balances inside the window, for this person's accounts. */
   snapshots: readonly (Snapshot & { accountId: string })[];
   storedFacts: StoredFacts | null;
+  /**
+   * Closing prices found for holdings whose start price was taken later
+   * than it should have been (see `closeRequests`), by symbol.
+   */
+  baselines?: Readonly<Record<string, { from: string; price: number }>>;
+  /** Closes looked up this sync, found or not: symbol to the day asked for. */
+  lookedUp?: Readonly<Record<string, string>>;
   pausedSince: string | null;
   /**
    * Every account id SnapTrade listed, including any that were not read
@@ -342,6 +351,18 @@ export function planSync(input: SyncInput): SyncPlan {
       startPrices[symbol] = price;
       startPriceDays[symbol] = day;
     }
+    // A close from before the price Holdfast first saw replaces it.
+    for (const [symbol, b] of Object.entries(input.baselines ?? {})) {
+      if (!(symbol in prices) || b.from < quarter.start || b.from > today) {
+        continue;
+      }
+      // A real close replaces a price Holdfast saw itself on the same day
+      // or later, but never an earlier start.
+      const have = startPriceDays[symbol];
+      if (have !== undefined && have < b.from) continue;
+      startPrices[symbol] = b.price;
+      startPriceDays[symbol] = b.from;
+    }
     // How far back each account's history reaches, per symbol it holds.
     const reach: Record<string, string> = {};
     for (const a of counted) {
@@ -376,6 +397,14 @@ export function planSync(input: SyncInput): SyncPlan {
       quarter: quarter.key,
       startPrices,
       startPriceDays,
+      closeLookups: Object.fromEntries(
+        Object.entries({
+          ...(storedFacts && storedFacts.quarter === quarter.key
+            ? (storedFacts.closeLookups ?? {})
+            : {}),
+          ...input.lookedUp,
+        }).filter(([symbol]) => symbol in prices),
+      ),
       firstSeen,
     };
   }

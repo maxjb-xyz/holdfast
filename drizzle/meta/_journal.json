@@ -36,6 +36,13 @@
       "when": 1794576846717,
       "tag": "0004_start_price_days",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794577821222,
+      "tag": "0005_close_lookups",
+      "breakpoints": true
     }
   ]
 }
