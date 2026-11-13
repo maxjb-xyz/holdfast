@@ -121,7 +121,10 @@ async function fetchAll(
  * Takes the right to sync a person. False when another sync started within
  * `minGapMs`, so a page view and the nightly job never overlap.
  */
-async function claimSync(userId: string, minGapMs: number): Promise<boolean> {
+async function claimSync(
+  userId: string,
+  minGapMs: number,
+): Promise<Date | null> {
   const db = await getDb();
   const now = new Date();
   const claimed = await db
@@ -136,8 +139,8 @@ async function claimSync(userId: string, minGapMs: number): Promise<boolean> {
         ),
       ),
     )
-    .returning({ id: t.users.id });
-  return claimed.length === 1;
+    .returning({ claimedAt: t.users.syncClaimedAt });
+  return claimed[0]?.claimedAt ?? null;
 }
 
 /**
@@ -150,17 +153,19 @@ export async function syncUser(
   config: SnapTradeConfig,
   options: { minGapMs?: number } = {},
 ): Promise<SyncResult> {
-  if (!(await claimSync(userId, options.minGapMs ?? 60_000))) return "busy";
+  const claim = await claimSync(userId, options.minGapMs ?? 60_000);
+  if (!claim) return "busy";
   try {
     return await runSync(userId, config);
   } catch (error) {
     // Kept so the person, and whoever debugs it, can see why it stopped.
+    // Only this run's claim is written to: a newer sync owns the row now.
     const message = error instanceof Error ? error.message : String(error);
     try {
       await (await getDb())
         .update(t.users)
         .set({ lastSyncError: message.replace(/\s+/g, " ").slice(0, 200) })
-        .where(eq(t.users.id, userId));
+        .where(and(eq(t.users.id, userId), eq(t.users.syncClaimedAt, claim)));
     } catch (cause) {
       console.error("could not record the sync error", cause);
     }
@@ -173,12 +178,11 @@ export async function syncUser(
  * long ago it started.
  */
 export async function syncOutcome(userId: string): Promise<{
-  state: "done" | "failed" | "reconnect" | "running" | "none";
+  state: "done" | "failed" | "running" | "none";
   ageMs: number;
 }> {
   const [row] = await (await getDb())
     .select({
-      paused: t.users.pausedSince,
       claimed: t.users.syncClaimedAt,
       synced: t.users.lastSyncedAt,
       error: t.users.lastSyncError,
@@ -191,12 +195,14 @@ export async function syncOutcome(userId: string): Promise<{
   if (row.synced && row.synced.getTime() >= row.claimed.getTime()) {
     return { state: "done", ageMs };
   }
-  return { state: row.paused ? "reconnect" : "running", ageMs };
+  return { state: "running", ageMs };
 }
 
 /**
- * A background sync has this long after its page is sent before the Worker
- * stops it. One that started earlier and has not finished was cut off.
+ * How long a sync someone else started may run before a manual sync takes
+ * over. Page-view syncs run as their own request now, but one started in a
+ * page's background time is stopped about 30 seconds after the page is sent
+ * and records nothing, so one older than this is taken to be gone.
  */
 export const BACKGROUND_SYNC_MS = 35_000;
 
@@ -504,6 +510,7 @@ async function runSync(
           then ${plan.pausedSince}
           else coalesce(${t.users.pausedSince}, ${today}) end`,
         lastSyncedAt: now,
+        lastSyncError: null,
       })
       .where(eq(t.users.id, userId)),
   );

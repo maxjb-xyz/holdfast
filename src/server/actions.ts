@@ -257,18 +257,25 @@ export async function syncNowAction(formData: FormData): Promise<void> {
   try {
     result = await syncUser(viewer.id, config, { minGapMs: 60_000 });
     // Opening the page may have started one already. Wait for it, and take
-    // over if it was cut off before it finished.
-    for (let tries = 0; result === "busy" && tries < 40; tries++) {
+    // over once it is old enough that it must have been cut off. Stored
+    // times are whole seconds, so the takeover waits one second more.
+    const takeOverAt = BACKGROUND_SYNC_MS + 1_000;
+    const deadline = Date.now() + takeOverAt + 10_000;
+    while (result === "busy" && Date.now() < deadline) {
       const { state, ageMs } = await syncOutcome(viewer.id);
       if (state === "done") result = "synced";
       else if (state === "failed") result = "failed";
-      else if (state === "reconnect") result = "reconnect";
       else if (state === "none") break;
-      else if (ageMs > BACKGROUND_SYNC_MS) {
-        result = await syncUser(viewer.id, config, {
-          minGapMs: BACKGROUND_SYNC_MS,
-        });
-      } else await new Promise((resolve) => setTimeout(resolve, 1_500));
+      else {
+        if (ageMs >= takeOverAt) {
+          result = await syncUser(viewer.id, config, {
+            minGapMs: BACKGROUND_SYNC_MS,
+          });
+        }
+        if (result === "busy") {
+          await new Promise((resolve) => setTimeout(resolve, 1_500));
+        }
+      }
     }
     if (result === "busy") result = "running";
   } catch (cause) {

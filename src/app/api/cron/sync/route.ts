@@ -8,7 +8,15 @@ import { SYNC_BATCH, syncUser, usersToSync } from "@/server/sync";
  * The nightly sync. Called by the Worker's scheduled handler, never by a
  * browser. Without `user` it hands each person to a fresh invocation of this
  * same route, so one slow brokerage never uses up another person's budget.
+ * Page views use the `user` form too (see lazy-sync), so their sync runs as
+ * a request of its own rather than in the page's short background time.
  */
+/** A caller may ask for a longer gap since the last sync, up to an hour. */
+function gapMs(raw: string | null): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 60_000 ? Math.min(n, 3_600_000) : 60_000;
+}
+
 export async function POST(request: NextRequest) {
   const config = await snaptradeConfig();
   if (!config) return NextResponse.json({ ok: false }, { status: 503 });
@@ -22,7 +30,9 @@ export async function POST(request: NextRequest) {
     try {
       return NextResponse.json({
         ok: true,
-        result: await syncUser(userId, config),
+        result: await syncUser(userId, config, {
+          minGapMs: gapMs(request.nextUrl.searchParams.get("gap")),
+        }),
       });
     } catch (error) {
       console.error("sync failed", userId, error);
