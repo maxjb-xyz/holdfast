@@ -4,6 +4,18 @@ A quarterly league for long-term investors. Friends compete on percentage
 return and steady habits, and nobody ever sees a dollar amount. Built on the
 SnapTrade OAuth API with read-only access.
 
+![The league screen: each member's return this quarter, drawn as one chart with the standings beside it](docs/screenshots/desktop-league.png)
+
+| Profile | Holdings |
+| --- | --- |
+| ![A friend's profile with return by quarter, buying rhythm and badges](docs/screenshots/desktop-profile.png) | ![Holdings as shares of the portfolio, with the 25% Well Spread limit](docs/screenshots/desktop-holdings.png) |
+
+| League on a phone | Profile on a phone |
+| --- | --- |
+| <img src="docs/screenshots/phone-league.png" alt="The league on a phone" width="300"> | <img src="docs/screenshots/phone-profile.png" alt="Your profile on a phone" width="300"> |
+
+Screenshots are from the demo league, which uses made-up rivals.
+
 ## What it does
 
 - **Leagues.** Make a league, invite up to seven friends by link, and watch a
