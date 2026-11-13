@@ -62,6 +62,11 @@ export type StoredFacts = {
   facts: HabitFacts;
   quarter: string;
   startPrices: Record<string, number>;
+  /**
+   * The day each start price was taken. A symbol with a stored price but no
+   * day comes from before days were kept, so its baseline is retaken.
+   */
+  startPriceDays?: Record<string, string>;
   firstSeen: Record<string, string>;
 };
 
@@ -321,11 +326,22 @@ export function planSync(input: SyncInput): SyncPlan {
       .filter((a) => a.connected && !isCounted(a))
       .flatMap(tagged);
     const prices = currentPrices([...others, ...positions]);
-    const startPrices =
+    // Each symbol's price change is measured from the first day this quarter
+    // that Holdfast saw it: the quarter's first sync, or later for a holding
+    // bought mid-quarter or an account linked mid-quarter.
+    const keptDays =
       storedFacts && storedFacts.quarter === quarter.key
-        ? // A holding first seen mid-quarter is measured from when it appeared.
-          { ...prices, ...storedFacts.startPrices }
-        : prices;
+        ? (storedFacts.startPriceDays ?? {})
+        : {};
+    const startPrices: Record<string, number> = { ...prices };
+    const startPriceDays: Record<string, string> = {};
+    for (const symbol of Object.keys(prices)) startPriceDays[symbol] = today;
+    for (const [symbol, day] of Object.entries(keptDays)) {
+      const price = storedFacts?.startPrices[symbol];
+      if (price === undefined) continue;
+      startPrices[symbol] = price;
+      startPriceDays[symbol] = day;
+    }
     // How far back each account's history reaches, per symbol it holds.
     const reach: Record<string, string> = {};
     for (const a of counted) {
@@ -351,13 +367,15 @@ export function planSync(input: SyncInput): SyncPlan {
           activities,
           positions,
           startPrices,
+          startPriceDays,
           firstSeen,
           today,
         }),
-        otherHoldings: holdingsFrom(others, startPrices),
+        otherHoldings: holdingsFrom(others, startPrices, startPriceDays, today),
       },
       quarter: quarter.key,
       startPrices,
+      startPriceDays,
       firstSeen,
     };
   }

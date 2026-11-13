@@ -208,6 +208,8 @@ export function buildFacts(input: {
   positions: readonly Position[];
   /** Price of each symbol when the quarter began, for the change figure. */
   startPrices: Readonly<Record<string, number>>;
+  /** The day each start price was taken. */
+  startPriceDays?: Readonly<Record<string, string>>;
   /** The day Holdfast first saw each symbol held. */
   firstSeen?: Readonly<Record<string, string>>;
   today: string;
@@ -228,7 +230,12 @@ export function buildFacts(input: {
     .map((a) => a.date)
     .sort();
 
-  const holdings = holdingsFrom(positions, startPrices);
+  const holdings = holdingsFrom(
+    positions,
+    startPrices,
+    input.startPriceDays ?? {},
+    today,
+  );
 
   const openings = [
     ...heldSince(activities, positions, input.firstSeen ?? {}, today).values(),
@@ -249,6 +256,8 @@ export function buildFacts(input: {
 export function holdingsFrom(
   positions: readonly Position[],
   startPrices: Readonly<Record<string, number>>,
+  startPriceDays: Readonly<Record<string, string>> = {},
+  today?: string,
 ): Holding[] {
   type Entry = { value: number; price: number; name?: string; accounts: Set<string> };
   const bySymbol = new Map<string, Entry>();
@@ -266,11 +275,15 @@ export function holdingsFrom(
   return [...bySymbol]
     .map(([ticker, e]) => {
       const start = startPrices[ticker];
+      const from = startPriceDays[ticker];
+      // A price first taken today has had no time to move: unknown, not 0%.
+      const fresh = from !== undefined && from === today;
       const holding: Holding = {
         ticker,
         share: total > 0 ? e.value / total : 0,
-        change: start && start > 0 ? e.price / start - 1 : null,
+        change: start && start > 0 && !fresh ? e.price / start - 1 : null,
       };
+      if (from) holding.changeFrom = from;
       if (e.name) holding.name = e.name;
       if (e.accounts.size > 0) holding.accounts = [...e.accounts];
       return holding;

@@ -231,4 +231,115 @@ describe("holdingsPage", () => {
     expect(page.largest).toBeNull();
     expect(page.filters).toEqual([]);
   });
+
+  it("names when price changes start when that is after the quarter began", () => {
+    const late = {
+      ...player,
+      facts: {
+        ...player.facts,
+        holdings: [
+          { ticker: "VTI", share: 0.6, change: 0.05, changeFrom: "2026-11-02" },
+          {
+            ticker: "AAPL",
+            share: 0.3,
+            change: 0.01,
+            changeFrom: "2026-11-09",
+          },
+          { ticker: "NEW", share: 0.1, change: null, changeFrom: TODAY },
+        ],
+      },
+    };
+    const page = holdingsPage(late, accounts, seen, TODAY);
+    expect(page.changeHeading).toBe("Since Nov 2");
+    expect(page.rows.map((r) => r.changeNote)).toEqual([
+      null,
+      "Since Nov 9",
+      "Priced today",
+    ]);
+    expect(page.stats.find((s) => s.label.startsWith("Best"))?.label).toBe(
+      "Best since Nov 2",
+    );
+    // The best holding's own later start is what its label names.
+    const lateBest = {
+      ...late,
+      facts: {
+        ...late.facts,
+        holdings: [
+          { ticker: "VTI", share: 0.6, change: 0.01, changeFrom: "2026-11-02" },
+          {
+            ticker: "AAPL",
+            share: 0.4,
+            change: 0.12,
+            changeFrom: "2026-11-09",
+          },
+        ],
+      },
+    };
+    expect(
+      holdingsPage(lateBest, accounts, seen, TODAY).stats.find((s) =>
+        s.label.startsWith("Best"),
+      ),
+    ).toEqual({ label: "Best since Nov 9", value: "AAPL +12.0%" });
+    const still = {
+      ...late,
+      facts: {
+        ...late.facts,
+        holdings: [
+          { ticker: "VTI", share: 0.6, change: 0, changeFrom: "2026-10-01" },
+          { ticker: "AAPL", share: 0.4, change: 0, changeFrom: "2026-10-01" },
+        ],
+      },
+    };
+    const league = leaguePage(
+      {
+        ...demoLeague(TODAY),
+        members: demoLeague(TODAY).members.map((m) =>
+          m.userId === DEMO_VIEWER_ID ? { ...m, facts: still.facts } : m,
+        ),
+      },
+      DEMO_VIEWER_ID,
+      TODAY,
+    );
+    expect(league.stats.some((s) => s.label.startsWith("Best"))).toBe(false);
+    // Prices taken in the quarter's first week count as the whole quarter.
+    const early = {
+      ...late,
+      facts: {
+        ...late.facts,
+        holdings: [
+          { ticker: "VTI", share: 0.6, change: 0.05, changeFrom: "2026-10-02" },
+        ],
+      },
+    };
+    expect(holdingsPage(early, accounts, seen, TODAY).changeHeading).toBe(
+      "This quarter",
+    );
+  });
+
+  it("splits the bar into labelled pieces and hides labels that would not fit", () => {
+    const many = {
+      ...player,
+      facts: {
+        ...player.facts,
+        holdings: [
+          { ticker: "A", share: 0.5, change: null },
+          { ticker: "B", share: 0.3, change: null },
+          { ticker: "C", share: 0.1, change: null },
+          { ticker: "D", share: 0.04, change: null },
+          { ticker: "E", share: 0.03, change: null },
+          { ticker: "F", share: 0.03, change: null },
+        ],
+      },
+    };
+    const { split } = holdingsPage(many, accounts, seen, TODAY);
+    expect(
+      split.map((p) => [p.label, p.labelled, p.parts.map((x) => x.ticker)]),
+    ).toEqual([
+      ["A", true, ["A"]],
+      ["B", true, ["B"]],
+      ["C", true, ["C"]],
+      ["D", false, ["D"]],
+      ["2 more", true, ["E", "F"]],
+    ]);
+  });
 });

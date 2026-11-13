@@ -137,9 +137,50 @@ function rowNote(row: LeagueRow, quarter: Quarter): string | null {
   return row.score.partial ? "Partial data" : null;
 }
 
+/** A change measured from this many days into the quarter still counts as the whole quarter. */
+export const QUARTER_GRACE_DAYS = 7;
+
+/**
+ * Where a set of holdings' price changes are measured from: the earliest
+ * day any of them was priced this quarter, or null when that is the
+ * quarter's start (or unknown, on facts from older syncs).
+ */
+export function changeStart(
+  holdings: readonly Holding[],
+  today: string,
+): string | null {
+  const quarter = quarterOf(today);
+  const first = holdings
+    .map((h) => h.changeFrom)
+    .filter((d): d is string => !!d)
+    .sort()[0];
+  if (!first) return null;
+  // Facts from an earlier quarter, not yet rebuilt since the quarter turned.
+  if (first < quarter.start) return first;
+  if (first < addDays(quarter.start, QUARTER_GRACE_DAYS)) return null;
+  return first;
+}
+
+/** "Best since Nov 12" when the holding's own change starts late, else the plain label. */
+export function bestLabel(
+  best: Holding,
+  holdings: readonly Holding[],
+  today: string,
+  plain: string,
+): string {
+  const view = changeStart(holdings, today);
+  const own = changeStart([best], today);
+  const from = [view, own]
+    .filter((d): d is string => !!d)
+    .sort()
+    .at(-1);
+  return from ? `Best since ${shortDate(from)}` : plain;
+}
+
 function bestHolding(facts: HabitFacts): Holding | null {
   const known = facts.holdings.filter((h) => h.change !== null);
-  if (known.length === 0) return null;
+  // Nothing has moved yet (prices taken today or unchanged): no standout.
+  if (known.every((h) => h.change === 0)) return null;
   return known.reduce((best, h) =>
     (h.change as number) > (best.change as number) ? h : best,
   );
@@ -147,7 +188,7 @@ function bestHolding(facts: HabitFacts): Holding | null {
 
 function worstHolding(facts: HabitFacts): Holding | null {
   const known = facts.holdings.filter((h) => h.change !== null);
-  if (known.length < 2) return null;
+  if (known.length < 2 || known.every((h) => h.change === 0)) return null;
   return known.reduce((worst, h) =>
     (h.change as number) < (worst.change as number) ? h : worst,
   );
@@ -335,7 +376,7 @@ export function leaguePage(
     const best = bestHolding(youPlayer.facts);
     if (best) {
       stats.push({
-        label: "Best holding",
+        label: bestLabel(best, youPlayer.facts.holdings, today, "Best holding"),
         value: `${best.ticker} ${signedPercent(best.change as number, 1)}`,
       });
     }
@@ -492,7 +533,12 @@ export type ProfilePage = {
   /** How the holdings shown relate to everything held. Null when not shown. */
   holdingsNote: string | null;
   /** Shown to friends when the player allows it. */
-  bestWorst: { best: Holding; worst: Holding | null } | null;
+  bestWorst: {
+    best: Holding;
+    worst: Holding | null;
+    /** "Holdings this quarter", or "Holdings since Nov 12". */
+    heading: string;
+  } | null;
   /** Null when the player keeps badges private. */
   badges: BadgeTile[] | null;
   badgeCount: number;
@@ -642,7 +688,16 @@ export function profilePage(
       : null,
     bestWorst:
       !isSelf && player.privacy.showHoldings && bestH
-        ? { best: bestH, worst: worstHolding(player.facts) }
+        ? {
+            best: bestH,
+            worst: worstHolding(player.facts),
+            heading: ((from) =>
+              from
+                ? `Holdings since ${shortDate(from)}`
+                : "Holdings this quarter")(
+              changeStart(player.facts.holdings, today),
+            ),
+          }
         : null,
     badges: see("showBadges") ? badgeTiles(player, today) : null,
     badgeCount: see("showBadges")

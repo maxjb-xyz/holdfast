@@ -261,7 +261,13 @@ describe("planSync", () => {
     const facts = { buyMonths: [], buyDates: [], dividendDates: [], holdings: [], holdingSince: null };
     const plan = planSync(
       input({
-        storedFacts: { facts, quarter: "2026-Q4", startPrices: { VTI: 200 }, firstSeen: {} },
+        storedFacts: {
+          facts,
+          quarter: "2026-Q4",
+          startPrices: { VTI: 200 },
+          startPriceDays: { VTI: "2026-10-01" },
+          firstSeen: {},
+        },
         fetched: [
           account({
             positions: [
@@ -274,8 +280,52 @@ describe("planSync", () => {
     );
     expect(plan.freeze).toBeNull();
     expect(plan.facts?.startPrices).toEqual({ VTI: 200, NEW: 10 });
+    expect(plan.facts?.startPriceDays).toEqual({ VTI: "2026-10-01", NEW: TODAY });
     const vti = plan.facts?.facts.holdings.find((h) => h.ticker === "VTI");
     expect(vti?.change).toBeCloseTo(0.25, 10);
+    expect(vti?.changeFrom).toBe("2026-10-01");
+    // Priced for the first time today: no change yet, rather than 0%.
+    const fresh = plan.facts?.facts.holdings.find((h) => h.ticker === "NEW");
+    expect(fresh).toMatchObject({ change: null, changeFrom: TODAY });
+  });
+
+  it("starts start-price days afresh when a new quarter begins, and keeps them for a symbol that comes back", () => {
+    const facts = { buyMonths: [], buyDates: [], dividendDates: [], holdings: [], holdingSince: null };
+    const turned = planSync(
+      input({
+        storedFacts: { facts, quarter: "2026-Q3", startPrices: { VTI: 1 }, startPriceDays: { VTI: "2026-07-01" }, firstSeen: {} },
+        fetched: [account({ positions: [{ symbol: "VTI", units: 2, price: 250, cashEquivalent: false }] })],
+      }),
+    );
+    expect(turned.facts?.startPriceDays).toEqual({ VTI: TODAY });
+    const back = planSync(
+      input({
+        storedFacts: {
+          facts,
+          quarter: "2026-Q4",
+          startPrices: { VTI: 200, GONE: 50 },
+          startPriceDays: { VTI: "2026-10-01", GONE: "2026-10-01" },
+          firstSeen: {},
+        },
+        fetched: [account({ positions: [{ symbol: "VTI", units: 2, price: 250, cashEquivalent: false }] })],
+      }),
+    );
+    expect(back.facts?.startPrices).toEqual({ VTI: 200, GONE: 50 });
+    expect(back.facts?.startPriceDays).toEqual({ VTI: "2026-10-01", GONE: "2026-10-01" });
+  });
+
+  it("retakes start prices stored without the day they were taken", () => {
+    const facts = { buyMonths: [], buyDates: [], dividendDates: [], holdings: [], holdingSince: null };
+    const plan = planSync(
+      input({
+        storedFacts: { facts, quarter: "2026-Q4", startPrices: { VTI: 200 }, firstSeen: {} },
+        fetched: [
+          account({ positions: [{ symbol: "VTI", units: 2, price: 250, cashEquivalent: false }] }),
+        ],
+      }),
+    );
+    expect(plan.facts?.startPrices).toEqual({ VTI: 250 });
+    expect(plan.facts?.startPriceDays).toEqual({ VTI: TODAY });
   });
 
   it("builds habits only from counted accounts", () => {
@@ -438,11 +488,11 @@ describe("planSync", () => {
       }),
     );
     expect(plan.facts?.facts.holdings).toEqual([
-      { ticker: "VTI", share: 0.5, change: 0, name: "Vanguard Total Stock Market ETF", accounts: ["a1", "a2"] },
-      { ticker: "AAPL", share: 0.5, change: 0, accounts: ["a2"] },
+      { ticker: "VTI", share: 0.5, change: null, changeFrom: TODAY, name: "Vanguard Total Stock Market ETF", accounts: ["a1", "a2"] },
+      { ticker: "AAPL", share: 0.5, change: null, changeFrom: TODAY, accounts: ["a2"] },
     ]);
     expect(plan.facts?.facts.otherHoldings).toEqual([
-      { ticker: "GME", share: 1, change: 0, accounts: ["play"] },
+      { ticker: "GME", share: 1, change: null, changeFrom: TODAY, accounts: ["play"] },
     ]);
   });
 });
