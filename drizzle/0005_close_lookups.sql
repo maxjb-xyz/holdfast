@@ -1,0 +1,1 @@
+ALTER TABLE `user_facts` ADD `close_lookups` text DEFAULT '{}' NOT NULL;
