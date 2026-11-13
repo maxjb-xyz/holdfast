@@ -1,6 +1,7 @@
 import "server-only";
 import { and, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
+import { batchStatements } from "@/db/batch";
 import * as t from "@/db/schema";
 import { accountLabel } from "@/lib/account-label";
 import type { BadgeKey } from "@/lib/badges";
@@ -515,8 +516,7 @@ async function runSync(
       .where(eq(t.users.id, userId)),
   );
   // One batch: either the whole day is recorded or none of it is.
-  const [first, ...rest] = writes;
-  await db.batch([first, ...rest]);
+  await batchStatements(db, writes);
   return "synced";
 }
 
