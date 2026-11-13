@@ -1,0 +1,1 @@
+ALTER TABLE `user_facts` ADD `start_price_days` text DEFAULT '{}' NOT NULL;

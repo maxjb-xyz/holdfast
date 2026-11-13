@@ -12,6 +12,12 @@ export type Holding = {
   share: number;
   /** Price change so far this quarter, as a fraction. Null when unknown. */
   change: number | null;
+  /**
+   * The day the change is measured from: the quarter's first sync, or later
+   * when the holding or its account appeared mid-quarter. Absent on facts
+   * from older syncs.
+   */
+  changeFrom?: string;
   /** What the security is called, such as "Apple Inc.", when known. */
   name?: string;
   /** Ids of the accounts that hold it. Absent on facts from older syncs. */

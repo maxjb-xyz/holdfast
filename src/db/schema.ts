@@ -162,6 +162,11 @@ export const userFacts = sqliteTable("user_facts", {
   startPrices: text("start_prices", { mode: "json" })
     .$type<Record<string, number>>()
     .notNull(),
+  // The day each start price was taken.
+  startPriceDays: text("start_price_days", { mode: "json" })
+    .$type<Record<string, string>>()
+    .notNull()
+    .default({}),
   // The day each current holding was first seen, for the One Year Hold badge
   // when the brokerage's history does not reach back to the purchase.
   firstSeen: text("first_seen", { mode: "json" })

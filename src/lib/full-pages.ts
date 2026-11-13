@@ -22,8 +22,18 @@ import {
   signedPercent,
 } from "./format";
 import type { League, LinkedAccount, Player } from "./model";
-import { leaguePage } from "./pages";
-import { daysInclusive, quarterOf, quartersEndingAt } from "./quarters";
+import {
+  bestLabel,
+  changeStart,
+  leaguePage,
+  QUARTER_GRACE_DAYS,
+} from "./pages";
+import {
+  addDays,
+  daysInclusive,
+  quarterOf,
+  quartersEndingAt,
+} from "./quarters";
 
 // --------------------------------------------------------------- accounts
 
@@ -246,6 +256,11 @@ export type HoldingRow = {
   /** Share of the portfolio in view, 0 to 1. */
   share: number;
   change: number | null;
+  /**
+   * "Since Dec 3" when this row's change starts later than the column's,
+   * or "Priced today" when it has no change yet. Null otherwise.
+   */
+  changeNote: string | null;
   /** Above the Well Spread mark. */
   over: boolean;
   largest: boolean;
@@ -271,9 +286,23 @@ export type HoldingsPage = {
   countedAccounts: number;
   largest: { ticker: string; share: number } | null;
   stats: { label: string; value: string }[];
-  /** The split bar: the largest few, then everything else as one piece. */
-  split: { label: string; share: number }[];
+  /** "This quarter", or "Since Nov 12" when prices were first taken later. */
+  changeHeading: string;
+  /**
+   * The split bar: the largest few, then everything else as one piece. Each
+   * piece holds its holdings' segments; `labelled` is false when the piece is
+   * too narrow for its label, which then shows on hover.
+   */
+  split: {
+    label: string;
+    share: number;
+    labelled: boolean;
+    parts: { ticker: string; share: number }[];
+  }[];
 };
+
+/** Below this share of the bar a piece's label is hidden until hovered. */
+export const SPLIT_LABEL_MIN = 0.06;
 
 const MONTH_YEAR = (date: string) => `${monthName(date)} ${date.slice(0, 4)}`;
 
@@ -324,13 +353,28 @@ export function holdingsPage(
   // earlier than its records go, so its date is only a bound.
   const firstLook = Object.values(firstSeen).sort()[0] ?? player.since;
   const baseline = firstLook > player.since ? firstLook : player.since;
+  const viewStart = changeStart(sorted, today);
   const rows = sorted.map<HoldingRow>((h, i) => {
     const seen = firstSeen[h.ticker];
+    const from = h.changeFrom;
     return {
       ticker: h.ticker,
       name: h.name ?? null,
       share: h.share,
       change: h.change,
+      changeNote:
+        h.change === null
+          ? from === today
+            ? "Priced today"
+            : from
+              ? "No change yet"
+              : null
+          : from &&
+              from >
+                (viewStart ??
+                  addDays(quarterOf(today).start, QUARTER_GRACE_DAYS - 1))
+            ? `Since ${shortDate(from)}`
+            : null,
       over: h.share > WELL_SPREAD_LIMIT,
       largest: i === 0,
       since: !seen
@@ -364,7 +408,7 @@ export function holdingsPage(
   )[0];
   if (best) {
     stats.push({
-      label: "Best this quarter",
+      label: bestLabel(best, counted, today, "Best this quarter"),
       value: `${best.ticker} ${signedPercent(best.change as number, 1)}`,
     });
   }
@@ -390,13 +434,19 @@ export function holdingsPage(
 
   const lead = sorted.slice(0, 4);
   const rest = sorted.slice(4);
-  const split = lead.map((h) => ({ label: h.ticker, share: h.share }));
-  if (rest.length > 0) {
-    split.push({
-      label: `${rest.length} more`,
-      share: rest.reduce((sum, h) => sum + h.share, 0),
-    });
-  }
+  // Shares of the bar, so a filtered view's pieces still fill it.
+  const inViewTotal = sorted.reduce((sum, h) => sum + h.share, 0) || 1;
+  const piece = (label: string, of: readonly Holding[]) => {
+    const share = of.reduce((sum, h) => sum + h.share, 0);
+    return {
+      label,
+      share,
+      labelled: share / inViewTotal >= SPLIT_LABEL_MIN,
+      parts: of.map((h) => ({ ticker: h.ticker, share: h.share })),
+    };
+  };
+  const split = lead.map((h) => piece(h.ticker, [h]));
+  if (rest.length > 0) split.push(piece(`${rest.length} more`, rest));
 
   return {
     rows,
@@ -406,6 +456,7 @@ export function holdingsPage(
     countedAccounts: accounts.filter((a) => a.counted).length,
     largest: top ? { ticker: top.ticker, share: top.share } : null,
     stats,
+    changeHeading: viewStart ? `Since ${shortDate(viewStart)}` : "This quarter",
     split,
   };
 }

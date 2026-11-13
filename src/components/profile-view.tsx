@@ -154,7 +154,7 @@ function BestWorst({ page }: { page: ProfilePage }) {
   const { best, worst } = page.bestWorst;
   return (
     <section className="flex flex-col gap-2.5">
-      <SectionHead title="Holdings this quarter" />
+      <SectionHead title={page.bestWorst.heading} />
       <div className="border-b border-faint">
         <Fact
           label="Best"
