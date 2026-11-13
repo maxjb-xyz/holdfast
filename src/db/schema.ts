@@ -33,6 +33,9 @@ export const users = sqliteTable("users", {
   lastSyncedAt: integer("last_synced_at", { mode: "timestamp" }),
   // When a sync last started, so two never run for one person at once.
   syncClaimedAt: integer("sync_claimed_at", { mode: "timestamp" }),
+  // Why the last sync stopped short, shown to the person. Cleared when the
+  // next one starts.
+  lastSyncError: text("last_sync_error"),
   createdAt: createdAt(),
 });
 

@@ -13,6 +13,7 @@ import { daysInclusive, quarterOf } from "@/lib/quarters";
 import { leave, syncNowAction } from "@/server/actions";
 import { loadLeague } from "@/server/leagues";
 import { myAccounts } from "@/server/me";
+import { currentUser } from "@/server/session";
 import { requireViewer, today } from "@/server/viewer";
 
 export const metadata: Metadata = { title: "Welcome" };
@@ -20,6 +21,8 @@ export const metadata: Metadata = { title: "Welcome" };
 const NOTICES: Record<string, string> = {
   "sync-synced": "Synced. Your accounts are up to date.",
   "sync-busy": "A sync ran a moment ago. Give it a minute and try again.",
+  "sync-running":
+    "A sync is still running. Your numbers update when it finishes, usually within a minute.",
   "sync-reconnect":
     "SnapTrade needs you to sign in again before Holdfast can read your accounts.",
   "sync-failed": "The sync did not finish. Please try again in a minute.",
@@ -44,6 +47,7 @@ export default async function WelcomeRoute({
   const week = Math.min(13, Math.ceil(daysInclusive(quarter.start, day) / 7));
   const daysLeft = daysInclusive(day, quarter.end) - 1;
   const firstName = viewer.name.split(" ")[0];
+  const syncError = (await currentUser())?.lastSyncError ?? null;
 
   return (
     <>
@@ -69,6 +73,9 @@ export default async function WelcomeRoute({
             </p>
           </div>
           <Notice>{notice}</Notice>
+          {syncError && (
+            <Notice>The last sync stopped short: {syncError}</Notice>
+          )}
           <div className="flex flex-col gap-2.5">
             <SectionHead
               title="Linked accounts"

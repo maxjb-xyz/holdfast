@@ -126,7 +126,7 @@ async function claimSync(userId: string, minGapMs: number): Promise<boolean> {
   const now = new Date();
   const claimed = await db
     .update(t.users)
-    .set({ syncClaimedAt: now })
+    .set({ syncClaimedAt: now, lastSyncError: null })
     .where(
       and(
         eq(t.users.id, userId),
@@ -151,6 +151,59 @@ export async function syncUser(
   options: { minGapMs?: number } = {},
 ): Promise<SyncResult> {
   if (!(await claimSync(userId, options.minGapMs ?? 60_000))) return "busy";
+  try {
+    return await runSync(userId, config);
+  } catch (error) {
+    // Kept so the person, and whoever debugs it, can see why it stopped.
+    const message = error instanceof Error ? error.message : String(error);
+    try {
+      await (await getDb())
+        .update(t.users)
+        .set({ lastSyncError: message.replace(/\s+/g, " ").slice(0, 200) })
+        .where(eq(t.users.id, userId));
+    } catch (cause) {
+      console.error("could not record the sync error", cause);
+    }
+    throw error;
+  }
+}
+
+/**
+ * How the latest sync that someone else started ended, if it has, and how
+ * long ago it started.
+ */
+export async function syncOutcome(userId: string): Promise<{
+  state: "done" | "failed" | "reconnect" | "running" | "none";
+  ageMs: number;
+}> {
+  const [row] = await (await getDb())
+    .select({
+      paused: t.users.pausedSince,
+      claimed: t.users.syncClaimedAt,
+      synced: t.users.lastSyncedAt,
+      error: t.users.lastSyncError,
+    })
+    .from(t.users)
+    .where(eq(t.users.id, userId));
+  if (!row?.claimed) return { state: "none", ageMs: 0 };
+  const ageMs = Date.now() - row.claimed.getTime();
+  if (row.error) return { state: "failed", ageMs };
+  if (row.synced && row.synced.getTime() >= row.claimed.getTime()) {
+    return { state: "done", ageMs };
+  }
+  return { state: row.paused ? "reconnect" : "running", ageMs };
+}
+
+/**
+ * A background sync has this long after its page is sent before the Worker
+ * stops it. One that started earlier and has not finished was cut off.
+ */
+export const BACKGROUND_SYNC_MS = 35_000;
+
+async function runSync(
+  userId: string,
+  config: SnapTradeConfig,
+): Promise<SyncResult> {
   const today = toDateString(new Date());
   const store = tokenStore(userId, config.encryptionKey);
 
